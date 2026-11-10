@@ -9,6 +9,7 @@ import { authRoutes } from "./routes/auth.routes.js";
 import { userRoutes } from "./routes/user.routes.js";
 import { adminRoutes } from "./routes/admin.routes.js";
 import { rideRoutes } from "./routes/ride.routes.js";
+import { geofenceRoutes } from "./routes/geofence.routes.js";
 import { AppError } from "./utils/errors.js";
 
 export async function createServer(): Promise<FastifyInstance> {
@@ -88,6 +89,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(userRoutes);
   await app.register(adminRoutes);
   await app.register(rideRoutes);
+  await app.register(geofenceRoutes);
 
   return app;
 }

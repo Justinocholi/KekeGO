@@ -14,6 +14,7 @@ import type {
   UpdateRideStatusInput,
 } from "@kekego/validation";
 import { AppError } from "../utils/errors.js";
+import { GeofenceService } from "./geofence.service.js";
 
 /**
  * Calculates great-circle distance between two coordinates in meters (Haversine formula)
@@ -43,6 +44,14 @@ export class RideService {
    * Calculate fare estimates across ride tiers
    */
   async estimateFare(input: RideEstimateRequest) {
+    // Spatial & Policy Validation: enforce Nasarawa operating territory
+    const geofenceService = new GeofenceService();
+    const tripValidation = await geofenceService.validateTrip(
+      input.pickup,
+      input.destination,
+      input.tier
+    );
+
     const distanceMeters = calculateDistanceMeters(
       input.pickup.latitude,
       input.pickup.longitude,
@@ -117,6 +126,7 @@ export class RideService {
     return {
       pickup: input.pickup,
       destination: input.destination,
+      validation: tripValidation,
       estimates,
     };
   }
