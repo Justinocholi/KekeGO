@@ -1,0 +1,178 @@
+import type { FastifyPluginAsync } from "fastify";
+import { UserRole } from "@kekego/database";
+import {
+  rideEstimateRequestSchema,
+  createRideRequestSchema,
+  cancelRideSchema,
+  createRatingSchema,
+  paginationQuerySchema,
+} from "@kekego/validation";
+import { RideService } from "../services/ride.service.js";
+
+export const rideRoutes: FastifyPluginAsync = async (fastify) => {
+  const rideService = new RideService();
+
+  // POST /rides/estimate (Fare estimation across tiers)
+  fastify.post("/rides/estimate", async (request, reply) => {
+    const parseResult = rideEstimateRequestSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid coordinates for pickup or destination",
+          details: parseResult.error.flatten(),
+        },
+      });
+    }
+
+    const estimates = await rideService.estimateFare(parseResult.data);
+    return reply.send({
+      success: true,
+      data: estimates,
+    });
+  });
+
+  // POST /rides (Create ride request, PASSENGER ONLY)
+  fastify.post(
+    "/rides",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.PASSENGER]),
+      ],
+    },
+    async (request, reply) => {
+      const parseResult = createRideRequestSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Invalid ride request parameters",
+            details: parseResult.error.flatten(),
+          },
+        });
+      }
+
+      const ride = await rideService.createRide(
+        request.user.userId,
+        parseResult.data
+      );
+
+      return reply.status(201).send({
+        success: true,
+        data: ride,
+      });
+    }
+  );
+
+  // GET /rides/history (Passenger trip history)
+  fastify.get(
+    "/rides/history",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.PASSENGER]),
+      ],
+    },
+    async (request, reply) => {
+      const query = request.query as Record<string, string>;
+      const parseResult = paginationQuerySchema.safeParse(query);
+      const pagination = parseResult.success
+        ? parseResult.data
+        : { page: 1, limit: 20 };
+
+      const history = await rideService.getPassengerHistory(
+        request.user.userId,
+        pagination.page,
+        pagination.limit
+      );
+
+      return reply.send({
+        success: true,
+        data: history.rides,
+        meta: history.pagination,
+      });
+    }
+  );
+
+  // GET /rides/:id (Ride details & status tracking)
+  fastify.get(
+    "/rides/:id",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const ride = await rideService.getRideById(
+        params.id,
+        request.user.userId,
+        request.user.role as UserRole
+      );
+
+      return reply.send({
+        success: true,
+        data: ride,
+      });
+    }
+  );
+
+  // POST /rides/:id/cancel (Cancel active ride)
+  fastify.post(
+    "/rides/:id/cancel",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const parseResult = cancelRideSchema.safeParse(request.body || {});
+      const reason = parseResult.success ? parseResult.data.reason : undefined;
+
+      const result = await rideService.cancelRide(
+        params.id,
+        request.user.userId,
+        request.user.role as UserRole,
+        reason
+      );
+
+      return reply.send({
+        success: true,
+        data: result,
+      });
+    }
+  );
+
+  // POST /rides/:id/rating (Submit trip review & rating)
+  fastify.post(
+    "/rides/:id/rating",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.PASSENGER]),
+      ],
+    },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const parseResult = createRatingSchema.safeParse(request.body);
+
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Valid score between 1 and 5 is required",
+            details: parseResult.error.flatten(),
+          },
+        });
+      }
+
+      const rating = await rideService.submitRating(
+        params.id,
+        request.user.userId,
+        parseResult.data
+      );
+
+      return reply.status(201).send({
+        success: true,
+        data: rating,
+      });
+    }
+  );
+};
