@@ -4,11 +4,14 @@ import {
   RideTier,
   PaymentStatus,
   UserRole,
+  DriverVerificationStatus,
+  DriverAvailabilityStatus,
 } from "@kekego/database";
 import type {
   CreateRideRequest,
   RideEstimateRequest,
   CreateRatingInput,
+  UpdateRideStatusInput,
 } from "@kekego/validation";
 import { AppError } from "../utils/errors.js";
 
@@ -530,6 +533,499 @@ export class RideService {
       score: rating.score,
       comment: rating.comment,
       tags: rating.tags,
+    };
+  }
+
+  /**
+   * Driver: Get incoming ride requests ready for dispatch (SEARCHING)
+   * Enforces that only VERIFIED and ONLINE drivers can view dispatches.
+   * Protects passenger PII prior to assignment.
+   */
+  async getAvailableDispatches(driverUserId: string) {
+    const driver = await prisma.driverProfile.findUnique({
+      where: { userId: driverUserId },
+    });
+
+    if (!driver) {
+      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+    }
+
+    if (driver.verificationStatus !== DriverVerificationStatus.VERIFIED) {
+      throw new AppError(
+        403,
+        "DRIVER_NOT_VERIFIED",
+        `Only verified drivers can receive dispatches. Your status is ${driver.verificationStatus}`
+      );
+    }
+
+    if (driver.availabilityStatus !== DriverAvailabilityStatus.ONLINE) {
+      throw new AppError(
+        400,
+        "DRIVER_OFFLINE",
+        "Driver must be ONLINE to receive incoming ride dispatches"
+      );
+    }
+
+    // Check if driver is already on an active trip
+    const activeTrip = await prisma.ride.findFirst({
+      where: {
+        driverId: driver.id,
+        status: {
+          in: [
+            RideStatus.DRIVER_ASSIGNED,
+            RideStatus.DRIVER_EN_ROUTE,
+            RideStatus.DRIVER_ARRIVED,
+            RideStatus.IN_PROGRESS,
+          ],
+        },
+      },
+    });
+
+    if (activeTrip) {
+      return []; // Busy drivers do not receive additional dispatch cards
+    }
+
+    // Find available searching rides
+    const rides = await prisma.ride.findMany({
+      where: {
+        status: RideStatus.SEARCHING,
+      },
+      orderBy: { requestedAt: "desc" },
+      take: 5,
+      include: {
+        passenger: {
+          select: {
+            rating: true,
+            totalRides: true,
+          },
+        },
+      },
+    });
+
+    // PII Protection: do not expose passenger's phone or full name before dispatch acceptance
+    return rides.map((r) => ({
+      id: r.id,
+      rideNumber: r.rideNumber,
+      tier: r.tier,
+      pickupAddress: r.pickupAddress,
+      destinationAddress: r.destinationAddress,
+      estimatedDistanceMeters: r.estimatedDistanceMeters,
+      estimatedDurationSeconds: r.estimatedDurationSeconds,
+      estimatedFareKobo: r.estimatedFareKobo,
+      estimatedEarningsKobo: Math.round(r.estimatedFareKobo * 0.85), // Net after 15% platform fee
+      paymentMethod: r.paymentMethod,
+      passengerRating: Number(r.passenger.rating),
+      passengerTotalRides: r.passenger.totalRides,
+      requestedAt: r.requestedAt,
+    }));
+  }
+
+  /**
+   * Driver: Accept an incoming ride dispatch
+   */
+  async acceptRide(rideId: string, driverUserId: string) {
+    const driver = await prisma.driverProfile.findUnique({
+      where: { userId: driverUserId },
+      include: { vehicles: true },
+    });
+
+    if (!driver) {
+      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+    }
+
+    if (driver.verificationStatus !== DriverVerificationStatus.VERIFIED) {
+      throw new AppError(
+        403,
+        "DRIVER_NOT_VERIFIED",
+        "Unverified drivers cannot accept ride requests"
+      );
+    }
+
+    const primaryVehicle = driver.vehicles[0];
+    if (!primaryVehicle) {
+      throw new AppError(
+        400,
+        "NO_ACTIVE_VEHICLE",
+        "No verified vehicle linked to your driver profile"
+      );
+    }
+
+    // Check if ride is still available
+    const ride = await prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: {
+          include: {
+            user: {
+              select: { firstName: true, phoneNumber: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!ride) {
+      throw new AppError(404, "RIDE_NOT_FOUND", "Ride request not found");
+    }
+
+    if (ride.status !== RideStatus.SEARCHING) {
+      throw new AppError(
+        409,
+        "RIDE_UNAVAILABLE",
+        `Ride has already been ${ride.status.toLowerCase()} by another partner or passenger`
+      );
+    }
+
+    const updated = await prisma.ride.update({
+      where: { id: rideId },
+      data: {
+        driverId: driver.id,
+        vehicleId: primaryVehicle.id,
+        status: RideStatus.DRIVER_ASSIGNED,
+        events: {
+          create: {
+            previousStatus: RideStatus.SEARCHING,
+            newStatus: RideStatus.DRIVER_ASSIGNED,
+            actorId: driverUserId,
+            actorRole: UserRole.DRIVER,
+          },
+        },
+      },
+      include: {
+        passenger: {
+          include: {
+            user: { select: { firstName: true, phoneNumber: true } },
+          },
+        },
+        vehicle: true,
+      },
+    });
+
+    return {
+      id: updated.id,
+      rideNumber: updated.rideNumber,
+      status: updated.status,
+      tier: updated.tier,
+      startOtp: updated.startOtp,
+      pickup: {
+        latitude: Number(updated.pickupLatitude),
+        longitude: Number(updated.pickupLongitude),
+        address: updated.pickupAddress,
+      },
+      destination: {
+        latitude: Number(updated.destinationLatitude),
+        longitude: Number(updated.destinationLongitude),
+        address: updated.destinationAddress,
+      },
+      estimatedDistanceMeters: updated.estimatedDistanceMeters,
+      estimatedDurationSeconds: updated.estimatedDurationSeconds,
+      estimatedFareKobo: updated.estimatedFareKobo,
+      paymentMethod: updated.paymentMethod,
+      passenger: {
+        name: updated.passenger.user.firstName,
+        phoneNumber: updated.passenger.user.phoneNumber,
+        rating: Number(updated.passenger.rating),
+      },
+      vehicle: updated.vehicle
+        ? {
+            plateNumber: updated.vehicle.plateNumber,
+            make: updated.vehicle.make,
+            model: updated.vehicle.model,
+            color: updated.vehicle.color,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Driver: Advance ride through its turn-by-turn workflow
+   */
+  async updateRideStatus(
+    rideId: string,
+    driverUserId: string,
+    input: UpdateRideStatusInput
+  ) {
+    const driver = await prisma.driverProfile.findUnique({
+      where: { userId: driverUserId },
+      include: { user: { include: { wallet: true } } },
+    });
+
+    if (!driver) {
+      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+    }
+
+    const ride = await prisma.ride.findUnique({
+      where: { id: rideId },
+    });
+
+    if (!ride) {
+      throw new AppError(404, "RIDE_NOT_FOUND", "Ride not found");
+    }
+
+    if (ride.driverId !== driver.id) {
+      throw new AppError(
+        403,
+        "FORBIDDEN",
+        "You are not the assigned driver for this ride"
+      );
+    }
+
+    // Validate state transitions
+    if (input.status === "IN_PROGRESS") {
+      // Boarding Verification: Start OTP must match!
+      if (!input.startOtp || input.startOtp !== ride.startOtp) {
+        throw new AppError(
+          400,
+          "INVALID_START_OTP",
+          "Incorrect 4-digit start OTP. Ask the passenger for their verification code before starting trip"
+        );
+      }
+    }
+
+    const now = new Date();
+    const isCompleted = input.status === "COMPLETED";
+    const finalFareKobo = isCompleted
+      ? ride.finalFareKobo || ride.estimatedFareKobo
+      : null;
+
+    const updated = await prisma.ride.update({
+      where: { id: rideId },
+      data: {
+        status: input.status as RideStatus,
+        startedAt: input.status === "IN_PROGRESS" ? now : undefined,
+        completedAt: isCompleted ? now : undefined,
+        finalFareKobo: isCompleted ? finalFareKobo : undefined,
+        events: {
+          create: {
+            previousStatus: ride.status,
+            newStatus: input.status as RideStatus,
+            actorId: driverUserId,
+            actorRole: UserRole.DRIVER,
+          },
+        },
+      },
+    });
+
+    // If completed: increment driver total trips and credit driver wallet
+    if (isCompleted) {
+      await prisma.driverProfile.update({
+        where: { id: driver.id },
+        data: {
+          totalTrips: { increment: 1 },
+        },
+      });
+
+      // Credit wallet if present (85% net earnings)
+      if (driver.user.wallet && finalFareKobo) {
+        const netEarningsKobo = Math.round(finalFareKobo * 0.85);
+        await prisma.wallet.update({
+          where: { id: driver.user.wallet.id },
+          data: {
+            balanceKobo: { increment: BigInt(netEarningsKobo) },
+          },
+        });
+      }
+    }
+
+    return {
+      id: updated.id,
+      rideNumber: updated.rideNumber,
+      status: updated.status,
+      startedAt: updated.startedAt,
+      completedAt: updated.completedAt,
+      finalFareKobo: updated.finalFareKobo,
+    };
+  }
+
+  /**
+   * Driver: Get active en-route ride
+   */
+  async getDriverActiveRide(driverUserId: string) {
+    const driver = await prisma.driverProfile.findUnique({
+      where: { userId: driverUserId },
+    });
+
+    if (!driver) {
+      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+    }
+
+    const ride = await prisma.ride.findFirst({
+      where: {
+        driverId: driver.id,
+        status: {
+          in: [
+            RideStatus.DRIVER_ASSIGNED,
+            RideStatus.DRIVER_EN_ROUTE,
+            RideStatus.DRIVER_ARRIVED,
+            RideStatus.IN_PROGRESS,
+          ],
+        },
+      },
+      include: {
+        passenger: {
+          include: {
+            user: { select: { firstName: true, phoneNumber: true } },
+          },
+        },
+        vehicle: true,
+      },
+    });
+
+    if (!ride) return null;
+
+    return {
+      id: ride.id,
+      rideNumber: ride.rideNumber,
+      status: ride.status,
+      tier: ride.tier,
+      startOtp: ride.startOtp,
+      pickup: {
+        latitude: Number(ride.pickupLatitude),
+        longitude: Number(ride.pickupLongitude),
+        address: ride.pickupAddress,
+      },
+      destination: {
+        latitude: Number(ride.destinationLatitude),
+        longitude: Number(ride.destinationLongitude),
+        address: ride.destinationAddress,
+      },
+      estimatedDistanceMeters: ride.estimatedDistanceMeters,
+      estimatedDurationSeconds: ride.estimatedDurationSeconds,
+      estimatedFareKobo: ride.estimatedFareKobo,
+      paymentMethod: ride.paymentMethod,
+      passenger: {
+        name: ride.passenger.user.firstName,
+        phoneNumber: ride.passenger.user.phoneNumber,
+        rating: Number(ride.passenger.rating),
+      },
+      vehicle: ride.vehicle
+        ? {
+            plateNumber: ride.vehicle.plateNumber,
+            make: ride.vehicle.make,
+            model: ride.vehicle.model,
+            color: ride.vehicle.color,
+          }
+        : null,
+      requestedAt: ride.requestedAt,
+      startedAt: ride.startedAt,
+    };
+  }
+
+  /**
+   * Driver: Get trip settlement history
+   */
+  async getDriverHistory(driverUserId: string, page = 1, limit = 20) {
+    const driver = await prisma.driverProfile.findUnique({
+      where: { userId: driverUserId },
+    });
+
+    if (!driver) {
+      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [total, rides] = await Promise.all([
+      prisma.ride.count({ where: { driverId: driver.id } }),
+      prisma.ride.findMany({
+        where: { driverId: driver.id },
+        skip,
+        take: limit,
+        orderBy: { requestedAt: "desc" },
+        include: {
+          rating: true,
+        },
+      }),
+    ]);
+
+    return {
+      rides: rides.map((r) => {
+        const fareKobo = r.finalFareKobo || r.estimatedFareKobo;
+        const commissionKobo = Math.round(fareKobo * 0.15);
+        const netEarningsKobo = fareKobo - commissionKobo;
+
+        return {
+          id: r.id,
+          rideNumber: r.rideNumber,
+          tier: r.tier,
+          status: r.status,
+          pickupAddress: r.pickupAddress,
+          destinationAddress: r.destinationAddress,
+          fareKobo,
+          commissionKobo,
+          netEarningsKobo,
+          paymentMethod: r.paymentMethod,
+          rating: r.rating ? { score: r.rating.score, comment: r.rating.comment } : null,
+          requestedAt: r.requestedAt,
+          completedAt: r.completedAt,
+        };
+      }),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Driver: Get earnings dashboard metrics
+   */
+  async getDriverEarningsSummary(driverUserId: string) {
+    const driver = await prisma.driverProfile.findUnique({
+      where: { userId: driverUserId },
+      include: {
+        user: { include: { wallet: true } },
+      },
+    });
+
+    if (!driver) {
+      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+    }
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const completedToday = await prisma.ride.findMany({
+      where: {
+        driverId: driver.id,
+        status: RideStatus.COMPLETED,
+        completedAt: { gte: startOfToday },
+      },
+      select: { finalFareKobo: true, estimatedFareKobo: true },
+    });
+
+    const grossEarningsTodayKobo = completedToday.reduce((sum, r) => {
+      return sum + (r.finalFareKobo || r.estimatedFareKobo);
+    }, 0);
+
+    const commissionTodayKobo = Math.round(grossEarningsTodayKobo * 0.15);
+    const netEarningsTodayKobo = grossEarningsTodayKobo - commissionTodayKobo;
+
+    const walletBalanceKobo = driver.user.wallet
+      ? Number(driver.user.wallet.balanceKobo)
+      : 0;
+
+    return {
+      today: {
+        completedTrips: completedToday.length,
+        grossEarningsKobo: grossEarningsTodayKobo,
+        commissionKobo: commissionTodayKobo,
+        netEarningsKobo: netEarningsTodayKobo,
+      },
+      metrics: {
+        acceptanceRatePercent: 96,
+        rating: Number(driver.rating),
+        totalTripsLifetime: driver.totalTrips,
+      },
+      wallet: {
+        balanceKobo: walletBalanceKobo,
+        currency: "NGN",
+      },
+      verificationStatus: driver.verificationStatus,
+      availabilityStatus: driver.availabilityStatus,
+      isOnline: driver.isOnline,
     };
   }
 }

@@ -6,6 +6,7 @@ import {
   cancelRideSchema,
   createRatingSchema,
   paginationQuerySchema,
+  updateRideStatusSchema,
 } from "@kekego/validation";
 import { RideService } from "../services/ride.service.js";
 
@@ -172,6 +173,158 @@ export const rideRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(201).send({
         success: true,
         data: rating,
+      });
+    }
+  );
+
+  // GET /rides/driver/dispatches (Available incoming dispatches, DRIVER ONLY)
+  fastify.get(
+    "/rides/driver/dispatches",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.DRIVER]),
+      ],
+    },
+    async (request, reply) => {
+      const dispatches = await rideService.getAvailableDispatches(
+        request.user.userId
+      );
+      return reply.send({
+        success: true,
+        data: dispatches,
+      });
+    }
+  );
+
+  // POST /rides/:id/accept (Driver accepts a dispatch, DRIVER ONLY)
+  fastify.post(
+    "/rides/:id/accept",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.DRIVER]),
+      ],
+    },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const ride = await rideService.acceptRide(
+        params.id,
+        request.user.userId
+      );
+
+      return reply.send({
+        success: true,
+        data: ride,
+      });
+    }
+  );
+
+  // PATCH /rides/:id/status (Driver advances trip status, DRIVER ONLY)
+  fastify.patch(
+    "/rides/:id/status",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.DRIVER]),
+      ],
+    },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const parseResult = updateRideStatusSchema.safeParse(request.body);
+
+      if (!parseResult.success) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Invalid status update payload",
+            details: parseResult.error.flatten(),
+          },
+        });
+      }
+
+      const result = await rideService.updateRideStatus(
+        params.id,
+        request.user.userId,
+        parseResult.data
+      );
+
+      return reply.send({
+        success: true,
+        data: result,
+      });
+    }
+  );
+
+  // GET /rides/driver/active (Driver's currently active assigned trip)
+  fastify.get(
+    "/rides/driver/active",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.DRIVER]),
+      ],
+    },
+    async (request, reply) => {
+      const activeTrip = await rideService.getDriverActiveRide(
+        request.user.userId
+      );
+
+      return reply.send({
+        success: true,
+        data: activeTrip,
+      });
+    }
+  );
+
+  // GET /rides/driver/history (Driver trip settlements & earnings)
+  fastify.get(
+    "/rides/driver/history",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.DRIVER]),
+      ],
+    },
+    async (request, reply) => {
+      const query = request.query as Record<string, string>;
+      const parseResult = paginationQuerySchema.safeParse(query);
+      const pagination = parseResult.success
+        ? parseResult.data
+        : { page: 1, limit: 20 };
+
+      const history = await rideService.getDriverHistory(
+        request.user.userId,
+        pagination.page,
+        pagination.limit
+      );
+
+      return reply.send({
+        success: true,
+        data: history.rides,
+        meta: history.pagination,
+      });
+    }
+  );
+
+  // GET /rides/driver/earnings (Driver dashboard metrics & wallet)
+  fastify.get(
+    "/rides/driver/earnings",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.DRIVER]),
+      ],
+    },
+    async (request, reply) => {
+      const earnings = await rideService.getDriverEarningsSummary(
+        request.user.userId
+      );
+
+      return reply.send({
+        success: true,
+        data: earnings,
       });
     }
   );

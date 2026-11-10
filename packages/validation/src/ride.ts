@@ -32,3 +32,29 @@ export const createRatingSchema = z.object({
 });
 
 export type CreateRatingInput = z.infer<typeof createRatingSchema>;
+
+export const updateRideStatusSchema = z.object({
+  status: z.enum([
+    "DRIVER_EN_ROUTE",
+    "DRIVER_ARRIVED",
+    "IN_PROGRESS",
+    "COMPLETED",
+  ]),
+  startOtp: z
+    .string()
+    .length(4, "Start OTP must be exactly 4 digits")
+    .optional(),
+  cancellationReason: z.string().max(255).optional(),
+});
+
+export type UpdateRideStatusInput = z.infer<typeof updateRideStatusSchema>;
+
+export const driverLocationUpdateSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  heading: z.number().min(0).max(360).optional(),
+  speed: z.number().min(0).optional(),
+});
+
+export type DriverLocationUpdateInput = z.infer<typeof driverLocationUpdateSchema>;
+
