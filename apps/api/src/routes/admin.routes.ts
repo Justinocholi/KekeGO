@@ -1,11 +1,31 @@
 import type { FastifyPluginAsync } from "fastify";
-import { UserRole } from "@kekego/shared";
+import { UserRole, DriverVerificationStatus, RideStatus } from "@kekego/database";
 import { paginationQuerySchema, verifyDriverSchema } from "@kekego/validation";
 import { UserService } from "../services/user.service.js";
+import { AdminService } from "../services/admin.service.js";
 import { prisma } from "@kekego/database";
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   const userService = new UserService();
+  const adminService = new AdminService();
+
+  // GET /admin/stats (ADMIN ONLY)
+  fastify.get(
+    "/admin/stats",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.ADMIN]),
+      ],
+    },
+    async (_request, reply) => {
+      const stats = await adminService.getDashboardStats();
+      return reply.send({
+        success: true,
+        data: stats,
+      });
+    }
+  );
 
   // GET /admin/users (ADMIN ONLY)
   fastify.get(
@@ -31,6 +51,38 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         success: true,
         data: data.users,
+        meta: {
+          ...data.pagination,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  );
+
+  // GET /admin/drivers (ADMIN ONLY)
+  fastify.get(
+    "/admin/drivers",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.ADMIN]),
+      ],
+    },
+    async (request, reply) => {
+      const query = request.query as Record<string, string>;
+      const parseResult = paginationQuerySchema.safeParse(query);
+      const pagination = parseResult.success ? parseResult.data : { page: 1, limit: 20 };
+      const statusFilter = query.status ? (query.status as DriverVerificationStatus) : undefined;
+
+      const data = await adminService.listDrivers({
+        status: statusFilter,
+        page: pagination.page,
+        limit: pagination.limit,
+      });
+
+      return reply.send({
+        success: true,
+        data: data.drivers,
         meta: {
           ...data.pagination,
           timestamp: new Date().toISOString(),
@@ -72,6 +124,54 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         success: true,
         data: result,
+      });
+    }
+  );
+
+  // GET /admin/vehicles (ADMIN ONLY)
+  fastify.get(
+    "/admin/vehicles",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.ADMIN]),
+      ],
+    },
+    async (request, reply) => {
+      const query = request.query as Record<string, string>;
+      const parseResult = paginationQuerySchema.safeParse(query);
+      const pagination = parseResult.success ? parseResult.data : { page: 1, limit: 20 };
+
+      const data = await adminService.listVehicles({
+        page: pagination.page,
+        limit: pagination.limit,
+      });
+
+      return reply.send({
+        success: true,
+        data: data.vehicles,
+        meta: {
+          ...data.pagination,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  );
+
+  // GET /admin/partners (ADMIN ONLY)
+  fastify.get(
+    "/admin/partners",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.ADMIN]),
+      ],
+    },
+    async (_request, reply) => {
+      const partners = await adminService.listPartners();
+      return reply.send({
+        success: true,
+        data: partners,
       });
     }
   );
@@ -125,6 +225,38 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         success: true,
         data: partner,
+      });
+    }
+  );
+
+  // GET /admin/rides (ADMIN ONLY)
+  fastify.get(
+    "/admin/rides",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.ADMIN]),
+      ],
+    },
+    async (request, reply) => {
+      const query = request.query as Record<string, string>;
+      const parseResult = paginationQuerySchema.safeParse(query);
+      const pagination = parseResult.success ? parseResult.data : { page: 1, limit: 20 };
+      const statusFilter = query.status ? (query.status as RideStatus) : undefined;
+
+      const data = await adminService.listRides({
+        status: statusFilter,
+        page: pagination.page,
+        limit: pagination.limit,
+      });
+
+      return reply.send({
+        success: true,
+        data: data.rides,
+        meta: {
+          ...data.pagination,
+          timestamp: new Date().toISOString(),
+        },
       });
     }
   );
