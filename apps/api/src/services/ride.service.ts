@@ -15,6 +15,7 @@ import type {
 } from "@kekego/validation";
 import { AppError } from "../utils/errors.js";
 import { GeofenceService } from "./geofence.service.js";
+import { DispatchService } from "./dispatch.service.js";
 
 /**
  * Calculates great-circle distance between two coordinates in meters (Haversine formula)
@@ -40,6 +41,8 @@ export function calculateDistanceMeters(
 }
 
 export class RideService {
+  public dispatchService = new DispatchService();
+
   /**
    * Calculate fare estimates across ride tiers
    */
@@ -226,6 +229,12 @@ export class RideService {
         },
       },
     });
+
+    try {
+      await this.dispatchService.dispatchRide(ride.id);
+    } catch {
+      // Matching initiated
+    }
 
     return {
       id: ride.id,
@@ -631,120 +640,51 @@ export class RideService {
   }
 
   /**
-   * Driver: Accept an incoming ride dispatch
+   * Driver: Accept an incoming ride dispatch with atomic concurrency locking
    */
   async acceptRide(rideId: string, driverUserId: string) {
-    const driver = await prisma.driverProfile.findUnique({
-      where: { userId: driverUserId },
-      include: { vehicles: true },
-    });
+    return this.dispatchService.acceptDispatch(rideId, driverUserId);
+  }
 
-    if (!driver) {
-      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
-    }
+  /**
+   * Driver: Reject incoming ride dispatch and cascade to next candidate
+   */
+  async rejectRide(
+    rideId: string,
+    driverUserId: string,
+    reason?: string,
+    comment?: string
+  ) {
+    return this.dispatchService.rejectDispatch(
+      rideId,
+      driverUserId,
+      reason,
+      comment
+    );
+  }
 
-    if (driver.verificationStatus !== DriverVerificationStatus.VERIFIED) {
-      throw new AppError(
-        403,
-        "DRIVER_NOT_VERIFIED",
-        "Unverified drivers cannot accept ride requests"
-      );
-    }
+  /**
+   * Passenger & Public: Anonymized nearby available tricycles for map canvas
+   */
+  async getNearbyDrivers(
+    latitude: number,
+    longitude: number,
+    radiusMeters?: number,
+    tier?: RideTier
+  ) {
+    return this.dispatchService.getAnonymizedNearbyDrivers(
+      latitude,
+      longitude,
+      radiusMeters,
+      tier
+    );
+  }
 
-    const primaryVehicle = driver.vehicles[0];
-    if (!primaryVehicle) {
-      throw new AppError(
-        400,
-        "NO_ACTIVE_VEHICLE",
-        "No verified vehicle linked to your driver profile"
-      );
-    }
-
-    // Check if ride is still available
-    const ride = await prisma.ride.findUnique({
-      where: { id: rideId },
-      include: {
-        passenger: {
-          include: {
-            user: {
-              select: { firstName: true, phoneNumber: true },
-            },
-          },
-        },
-      },
-    });
-
-    if (!ride) {
-      throw new AppError(404, "RIDE_NOT_FOUND", "Ride request not found");
-    }
-
-    if (ride.status !== RideStatus.SEARCHING) {
-      throw new AppError(
-        409,
-        "RIDE_UNAVAILABLE",
-        `Ride has already been ${ride.status.toLowerCase()} by another partner or passenger`
-      );
-    }
-
-    const updated = await prisma.ride.update({
-      where: { id: rideId },
-      data: {
-        driverId: driver.id,
-        vehicleId: primaryVehicle.id,
-        status: RideStatus.DRIVER_ASSIGNED,
-        events: {
-          create: {
-            previousStatus: RideStatus.SEARCHING,
-            newStatus: RideStatus.DRIVER_ASSIGNED,
-            actorId: driverUserId,
-            actorRole: UserRole.DRIVER,
-          },
-        },
-      },
-      include: {
-        passenger: {
-          include: {
-            user: { select: { firstName: true, phoneNumber: true } },
-          },
-        },
-        vehicle: true,
-      },
-    });
-
-    return {
-      id: updated.id,
-      rideNumber: updated.rideNumber,
-      status: updated.status,
-      tier: updated.tier,
-      startOtp: updated.startOtp,
-      pickup: {
-        latitude: Number(updated.pickupLatitude),
-        longitude: Number(updated.pickupLongitude),
-        address: updated.pickupAddress,
-      },
-      destination: {
-        latitude: Number(updated.destinationLatitude),
-        longitude: Number(updated.destinationLongitude),
-        address: updated.destinationAddress,
-      },
-      estimatedDistanceMeters: updated.estimatedDistanceMeters,
-      estimatedDurationSeconds: updated.estimatedDurationSeconds,
-      estimatedFareKobo: updated.estimatedFareKobo,
-      paymentMethod: updated.paymentMethod,
-      passenger: {
-        name: updated.passenger.user.firstName,
-        phoneNumber: updated.passenger.user.phoneNumber,
-        rating: Number(updated.passenger.rating),
-      },
-      vehicle: updated.vehicle
-        ? {
-            plateNumber: updated.vehicle.plateNumber,
-            make: updated.vehicle.make,
-            model: updated.vehicle.model,
-            color: updated.vehicle.color,
-          }
-        : null,
-    };
+  /**
+   * Retrieve dispatch attempt history for a ride
+   */
+  async getDispatchHistory(rideId: string) {
+    return this.dispatchService.getDispatchHistory(rideId);
   }
 
   /**

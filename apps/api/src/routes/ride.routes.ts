@@ -7,6 +7,8 @@ import {
   createRatingSchema,
   paginationQuerySchema,
   updateRideStatusSchema,
+  nearbyDriversQuerySchema,
+  rejectRideSchema,
 } from "@kekego/validation";
 import { RideService } from "../services/ride.service.js";
 
@@ -31,6 +33,33 @@ export const rideRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({
       success: true,
       data: estimates,
+    });
+  });
+
+  // GET /rides/nearby-drivers (Anonymized nearby tricycles for map canvas)
+  fastify.get("/rides/nearby-drivers", async (request, reply) => {
+    const parseResult = nearbyDriversQuerySchema.safeParse(request.query);
+    if (!parseResult.success) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Valid latitude and longitude are required",
+          details: parseResult.error.flatten(),
+        },
+      });
+    }
+
+    const drivers = await rideService.getNearbyDrivers(
+      parseResult.data.latitude,
+      parseResult.data.longitude,
+      parseResult.data.radiusMeters,
+      parseResult.data.tier
+    );
+
+    return reply.send({
+      success: true,
+      data: drivers,
     });
   });
 
@@ -216,6 +245,86 @@ export const rideRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         success: true,
         data: ride,
+      });
+    }
+  );
+
+  // POST /rides/:id/reject (Driver rejects dispatch, DRIVER ONLY)
+  fastify.post(
+    "/rides/:id/reject",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.DRIVER]),
+      ],
+    },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const parseResult = rejectRideSchema.safeParse(request.body || {});
+      const reason = parseResult.success ? parseResult.data.reason : "UNAVAILABLE";
+      const comment = parseResult.success ? parseResult.data.comment : undefined;
+
+      const result = await rideService.rejectRide(
+        params.id,
+        request.user.userId,
+        reason,
+        comment
+      );
+
+      return reply.send({
+        success: true,
+        data: result,
+      });
+    }
+  );
+
+  // POST /rides/:id/dispatch (Initiate or retry matching)
+  fastify.post(
+    "/rides/:id/dispatch",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const body = request.body as { radiusMeters?: number } | undefined;
+      const result = await rideService.dispatchService.dispatchRide(params.id, {
+        radiusMeters: body?.radiusMeters,
+      });
+
+      return reply.send({
+        success: true,
+        data: result,
+      });
+    }
+  );
+
+  // GET /rides/:id/dispatch-history (Inspect dispatch attempts history)
+  fastify.get(
+    "/rides/:id/dispatch-history",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const params = request.params as { id: string };
+      const history = await rideService.getDispatchHistory(params.id);
+
+      return reply.send({
+        success: true,
+        data: history,
+      });
+    }
+  );
+
+  // GET /admin/dispatch/active (Admin active dispatch queue monitor, ADMIN ONLY)
+  fastify.get(
+    "/admin/dispatch/active",
+    {
+      preHandler: [
+        fastify.authenticate,
+        fastify.authorize([UserRole.ADMIN]),
+      ],
+    },
+    async (_request, reply) => {
+      const active = await rideService.dispatchService.getActiveDispatches();
+      return reply.send({
+        success: true,
+        data: active,
       });
     }
   );
