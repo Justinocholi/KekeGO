@@ -15,7 +15,12 @@ import type {
 } from "@kekego/validation";
 import { AppError } from "../utils/errors.js";
 import { GeofenceService } from "./geofence.service.js";
-import { DispatchService } from "./dispatch.service.js";
+import {
+  DispatchService,
+  IN_MEMORY_ACTIVE_RIDES,
+  IN_MEMORY_DRIVER_STATES,
+} from "./dispatch.service.js";
+import { getSocketService } from "./socket.service.js";
 
 /**
  * Calculates great-circle distance between two coordinates in meters (Haversine formula)
@@ -370,59 +375,132 @@ export class RideService {
    * Cancel an active ride
    */
   async cancelRide(rideId: string, userId: string, role: UserRole, reason?: string) {
-    const ride = await prisma.ride.findUnique({
-      where: { id: rideId },
-      include: { passenger: true, driver: true },
-    });
+    if (process.env.DATABASE_URL) {
+      try {
+        const ride = await prisma.ride.findUnique({
+          where: { id: rideId },
+          include: { passenger: true, driver: true },
+        });
 
-    if (!ride) {
+        if (ride) {
+          if (
+            role !== UserRole.ADMIN &&
+            ride.passenger.userId !== userId &&
+            ride.driver?.userId !== userId
+          ) {
+            throw new AppError(403, "FORBIDDEN", "Not authorized to cancel this ride");
+          }
+
+          if (
+            ride.status === RideStatus.COMPLETED ||
+            ride.status === RideStatus.CANCELLED
+          ) {
+            throw new AppError(
+              400,
+              "INVALID_STATE_TRANSITION",
+              `Cannot cancel a ride that is already ${ride.status}`
+            );
+          }
+
+          const updated = await prisma.ride.update({
+            where: { id: rideId },
+            data: {
+              status: RideStatus.CANCELLED,
+              cancellationReason: reason || "Cancelled by passenger",
+              cancelledBy: role,
+              cancelledAt: new Date(),
+              events: {
+                create: {
+                  previousStatus: ride.status,
+                  newStatus: RideStatus.CANCELLED,
+                  actorId: userId,
+                  actorRole: role,
+                  metadata: { reason },
+                },
+              },
+            },
+          });
+
+          // Free driver availability
+          if (ride.driverId) {
+            await prisma.driverProfile
+              .update({
+                where: { id: ride.driverId },
+                data: { availabilityStatus: DriverAvailabilityStatus.ONLINE },
+              })
+              .catch(() => {});
+          }
+
+          const cancelResult = {
+            id: updated.id,
+            status: updated.status,
+            cancellationReason: updated.cancellationReason,
+            cancelledAt: updated.cancelledAt,
+          };
+
+          const socketService = getSocketService();
+          if (socketService) {
+            socketService.notifyRideCancelled(updated.id, {
+              rideId: updated.id,
+              status: updated.status,
+              cancellationReason: updated.cancellationReason,
+              cancelledBy: role,
+              cancelledAt: updated.cancelledAt?.toISOString(),
+            });
+          }
+
+          return cancelResult;
+        }
+      } catch (err: unknown) {
+        if (err instanceof AppError) throw err;
+      }
+    }
+
+    // In-memory fallback
+    const inMemRide = IN_MEMORY_ACTIVE_RIDES.get(rideId);
+    if (!inMemRide) {
       throw new AppError(404, "RIDE_NOT_FOUND", "Ride not found");
     }
 
     if (
-      role !== UserRole.ADMIN &&
-      ride.passenger.userId !== userId &&
-      ride.driver?.userId !== userId
-    ) {
-      throw new AppError(403, "FORBIDDEN", "Not authorized to cancel this ride");
-    }
-
-    if (
-      ride.status === RideStatus.COMPLETED ||
-      ride.status === RideStatus.CANCELLED
+      inMemRide.status === RideStatus.COMPLETED ||
+      inMemRide.status === RideStatus.CANCELLED
     ) {
       throw new AppError(
         400,
         "INVALID_STATE_TRANSITION",
-        `Cannot cancel a ride that is already ${ride.status}`
+        `Cannot cancel a ride that is already ${inMemRide.status}`
       );
     }
 
-    const updated = await prisma.ride.update({
-      where: { id: rideId },
-      data: {
-        status: RideStatus.CANCELLED,
-        cancellationReason: reason || "Cancelled by passenger",
-        cancelledBy: role,
-        cancelledAt: new Date(),
-        events: {
-          create: {
-            previousStatus: ride.status,
-            newStatus: RideStatus.CANCELLED,
-            actorId: userId,
-            actorRole: role,
-            metadata: { reason },
-          },
-        },
-      },
-    });
+    inMemRide.status = RideStatus.CANCELLED;
+    if (inMemRide.driverId) {
+      const driverState = IN_MEMORY_DRIVER_STATES.get(inMemRide.driverId);
+      if (driverState) {
+        driverState.activeRideId = null;
+        driverState.availabilityStatus = DriverAvailabilityStatus.ONLINE;
+      }
+    }
 
-    return {
-      id: updated.id,
-      status: updated.status,
-      cancellationReason: updated.cancellationReason,
-      cancelledAt: updated.cancelledAt,
+    const cancelResult = {
+      id: inMemRide.id,
+      status: RideStatus.CANCELLED,
+      cancellationReason: reason || "Cancelled by passenger",
+      cancelledAt: new Date(),
     };
+
+    const socketService = getSocketService();
+    if (socketService) {
+      socketService.notifyRideCancelled(inMemRide.id, {
+        rideId: inMemRide.id,
+        status: RideStatus.CANCELLED,
+        cancellationReason: cancelResult.cancellationReason,
+        cancelledBy: role,
+        cancelledAt: cancelResult.cancelledAt.toISOString(),
+      });
+    }
+
+    return cancelResult;
   }
 
   /**
@@ -695,35 +773,129 @@ export class RideService {
     driverUserId: string,
     input: UpdateRideStatusInput
   ) {
-    const driver = await prisma.driverProfile.findUnique({
-      where: { userId: driverUserId },
-      include: { user: { include: { wallet: true } } },
-    });
+    const now = new Date();
+    const isCompleted = input.status === "COMPLETED";
 
-    if (!driver) {
-      throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+    if (process.env.DATABASE_URL) {
+      try {
+        const driver = await prisma.driverProfile.findUnique({
+          where: { userId: driverUserId },
+          include: { user: { include: { wallet: true } } },
+        });
+
+        if (!driver) {
+          throw new AppError(404, "DRIVER_NOT_FOUND", "Driver profile not found");
+        }
+
+        const ride = await prisma.ride.findUnique({
+          where: { id: rideId },
+        });
+
+        if (!ride) {
+          throw new AppError(404, "RIDE_NOT_FOUND", "Ride not found");
+        }
+
+        if (ride.driverId !== driver.id) {
+          throw new AppError(
+            403,
+            "FORBIDDEN",
+            "You are not the assigned driver for this ride"
+          );
+        }
+
+        // Validate state transitions
+        if (input.status === "IN_PROGRESS") {
+          // Boarding Verification: Start OTP must match!
+          if (!input.startOtp || input.startOtp !== ride.startOtp) {
+            throw new AppError(
+              400,
+              "INVALID_START_OTP",
+              "Incorrect 4-digit start OTP. Ask the passenger for their verification code before starting trip"
+            );
+          }
+        }
+
+        const finalFareKobo = isCompleted
+          ? ride.finalFareKobo || ride.estimatedFareKobo
+          : null;
+
+        const updated = await prisma.ride.update({
+          where: { id: rideId },
+          data: {
+            status: input.status as RideStatus,
+            startedAt: input.status === "IN_PROGRESS" ? now : undefined,
+            completedAt: isCompleted ? now : undefined,
+            finalFareKobo: isCompleted ? finalFareKobo : undefined,
+            events: {
+              create: {
+                previousStatus: ride.status,
+                newStatus: input.status as RideStatus,
+                actorId: driverUserId,
+                actorRole: UserRole.DRIVER,
+              },
+            },
+          },
+        });
+
+        // If completed: increment driver total trips and credit driver wallet
+        if (isCompleted) {
+          await prisma.driverProfile.update({
+            where: { id: driver.id },
+            data: {
+              totalTrips: { increment: 1 },
+              availabilityStatus: DriverAvailabilityStatus.ONLINE,
+            },
+          });
+
+          // Credit wallet if present (85% net earnings)
+          if (driver.user.wallet && finalFareKobo) {
+            const netEarningsKobo = Math.round(finalFareKobo * 0.85);
+            await prisma.wallet.update({
+              where: { id: driver.user.wallet.id },
+              data: {
+                balanceKobo: { increment: BigInt(netEarningsKobo) },
+              },
+            });
+          }
+        }
+
+        const result = {
+          id: updated.id,
+          rideNumber: updated.rideNumber,
+          status: updated.status,
+          startedAt: updated.startedAt,
+          completedAt: updated.completedAt,
+          finalFareKobo: updated.finalFareKobo,
+        };
+
+        // Real-Time Socket.IO Lifecycle Notifications
+        const socketService = getSocketService();
+        if (socketService) {
+          if (input.status === "DRIVER_EN_ROUTE") {
+            socketService.notifyDriverEnRoute(updated.id, result);
+          } else if (input.status === "DRIVER_ARRIVED") {
+            socketService.notifyDriverArrived(updated.id, result);
+          } else if (input.status === "IN_PROGRESS") {
+            socketService.notifyRideStarted(updated.id, result);
+          } else if (input.status === "COMPLETED") {
+            socketService.notifyRideCompleted(updated.id, result);
+          }
+        }
+
+        return result;
+      } catch (err: unknown) {
+        if (err instanceof AppError) throw err;
+      }
     }
 
-    const ride = await prisma.ride.findUnique({
-      where: { id: rideId },
-    });
-
-    if (!ride) {
+    // In-memory fallback
+    const inMemRide = IN_MEMORY_ACTIVE_RIDES.get(rideId);
+    if (!inMemRide) {
       throw new AppError(404, "RIDE_NOT_FOUND", "Ride not found");
     }
 
-    if (ride.driverId !== driver.id) {
-      throw new AppError(
-        403,
-        "FORBIDDEN",
-        "You are not the assigned driver for this ride"
-      );
-    }
-
-    // Validate state transitions
     if (input.status === "IN_PROGRESS") {
-      // Boarding Verification: Start OTP must match!
-      if (!input.startOtp || input.startOtp !== ride.startOtp) {
+      if (!input.startOtp || input.startOtp !== inMemRide.startOtp) {
         throw new AppError(
           400,
           "INVALID_START_OTP",
@@ -732,59 +904,38 @@ export class RideService {
       }
     }
 
-    const now = new Date();
-    const isCompleted = input.status === "COMPLETED";
-    const finalFareKobo = isCompleted
-      ? ride.finalFareKobo || ride.estimatedFareKobo
-      : null;
-
-    const updated = await prisma.ride.update({
-      where: { id: rideId },
-      data: {
-        status: input.status as RideStatus,
-        startedAt: input.status === "IN_PROGRESS" ? now : undefined,
-        completedAt: isCompleted ? now : undefined,
-        finalFareKobo: isCompleted ? finalFareKobo : undefined,
-        events: {
-          create: {
-            previousStatus: ride.status,
-            newStatus: input.status as RideStatus,
-            actorId: driverUserId,
-            actorRole: UserRole.DRIVER,
-          },
-        },
-      },
-    });
-
-    // If completed: increment driver total trips and credit driver wallet
-    if (isCompleted) {
-      await prisma.driverProfile.update({
-        where: { id: driver.id },
-        data: {
-          totalTrips: { increment: 1 },
-        },
-      });
-
-      // Credit wallet if present (85% net earnings)
-      if (driver.user.wallet && finalFareKobo) {
-        const netEarningsKobo = Math.round(finalFareKobo * 0.85);
-        await prisma.wallet.update({
-          where: { id: driver.user.wallet.id },
-          data: {
-            balanceKobo: { increment: BigInt(netEarningsKobo) },
-          },
-        });
+    inMemRide.status = input.status as RideStatus;
+    if (isCompleted && inMemRide.driverId) {
+      const driverState = IN_MEMORY_DRIVER_STATES.get(inMemRide.driverId);
+      if (driverState) {
+        driverState.activeRideId = null;
+        driverState.availabilityStatus = DriverAvailabilityStatus.ONLINE;
       }
     }
 
-    return {
-      id: updated.id,
-      rideNumber: updated.rideNumber,
-      status: updated.status,
-      startedAt: updated.startedAt,
-      completedAt: updated.completedAt,
-      finalFareKobo: updated.finalFareKobo,
+    const result = {
+      id: inMemRide.id,
+      rideNumber: inMemRide.rideNumber,
+      status: inMemRide.status,
+      startedAt: input.status === "IN_PROGRESS" ? now : undefined,
+      completedAt: isCompleted ? now : undefined,
+      finalFareKobo: isCompleted ? inMemRide.estimatedFareKobo : undefined,
     };
+
+    const socketService = getSocketService();
+    if (socketService) {
+      if (input.status === "DRIVER_EN_ROUTE") {
+        socketService.notifyDriverEnRoute(inMemRide.id, result);
+      } else if (input.status === "DRIVER_ARRIVED") {
+        socketService.notifyDriverArrived(inMemRide.id, result);
+      } else if (input.status === "IN_PROGRESS") {
+        socketService.notifyRideStarted(inMemRide.id, result);
+      } else if (input.status === "COMPLETED") {
+        socketService.notifyRideCompleted(inMemRide.id, result);
+      }
+    }
+
+    return result;
   }
 
   /**

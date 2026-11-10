@@ -11,6 +11,13 @@ import { adminRoutes } from "./routes/admin.routes.js";
 import { rideRoutes } from "./routes/ride.routes.js";
 import { geofenceRoutes } from "./routes/geofence.routes.js";
 import { AppError } from "./utils/errors.js";
+import { SocketService } from "./services/socket.service.js";
+
+declare module "fastify" {
+  interface FastifyInstance {
+    socketService: SocketService;
+  }
+}
 
 export async function createServer(): Promise<FastifyInstance> {
   const isProd = env.NODE_ENV === "production";
@@ -82,6 +89,15 @@ export async function createServer(): Promise<FastifyInstance> {
 
   // Auth Plugin (JWT + decorators)
   await app.register(authPlugin);
+
+  // Initialize Socket.IO Real-Time Service
+  const socketService = new SocketService(app);
+  app.decorate("socketService", socketService);
+
+  // Gracefully close Socket.IO on Fastify shutdown
+  app.addHook("onClose", async () => {
+    await socketService.close();
+  });
 
   // Routes
   await app.register(healthRoutes);

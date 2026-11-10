@@ -9,6 +9,7 @@ import {
 import { AppError } from "../utils/errors.js";
 import { calculateDistanceMeters } from "./ride.service.js";
 import { GeofenceService } from "./geofence.service.js";
+import { getSocketService } from "./socket.service.js";
 
 export interface CandidateDriver {
   driverId: string;
@@ -568,6 +569,22 @@ export class DispatchService {
       inMemRide.status = RideStatus.SEARCHING;
     }
 
+    // Real-Time Socket.IO event notification to driver
+    const socketService = getSocketService();
+    if (socketService) {
+      socketService.notifyRideDispatched(rideId, topCandidate.driverId, {
+        rideId,
+        rideNumber: inMemRide?.rideNumber || rideId,
+        tier: rideTier,
+        pickup: {
+          latitude: ridePickupLat,
+          longitude: ridePickupLng,
+        },
+        timeoutSeconds,
+        expiresAt: expiresAt.toISOString(),
+      });
+    }
+
     return {
       status: "DISPATCHED",
       targetDriverId: topCandidate.driverId,
@@ -586,7 +603,7 @@ export class DispatchService {
   async acceptDispatch(rideId: string, driverUserId: string) {
     if (process.env.DATABASE_URL) {
       try {
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
           // 1. Fetch driver profile & active vehicle
           const driver = await tx.driverProfile.findUnique({
             where: { userId: driverUserId },
@@ -751,6 +768,22 @@ export class DispatchService {
             },
           };
         });
+
+        // Notify ride room in real-time via Socket.IO
+        const socketService = getSocketService();
+        if (socketService) {
+          socketService.notifyRideAccepted(result.id, {
+            rideId: result.id,
+            status: result.status,
+            driver: {
+              name: result.passenger.name,
+              vehicle: result.vehicle,
+            },
+            assignedAt: new Date().toISOString(),
+          });
+        }
+
+        return result;
       } catch (err: unknown) {
         if (err instanceof AppError) throw err;
         // Fall back to in-memory atomic assignment check
@@ -864,7 +897,7 @@ export class DispatchService {
       attempt.resolvedAt = new Date();
     }
 
-    return {
+    const result = {
       id: ride.id,
       rideNumber: ride.rideNumber,
       status: ride.status,
@@ -883,6 +916,25 @@ export class DispatchService {
         color: "Yellow",
       },
     };
+
+    // Notify ride room in real-time via Socket.IO
+    const socketService = getSocketService();
+    if (socketService) {
+      socketService.notifyRideAccepted(ride.id, {
+        rideId: ride.id,
+        status: ride.status,
+        driver: {
+          id: driver.driverId,
+          userId: driver.userId,
+          name: "Ibrahim Musa",
+          phoneNumber: "+2348011223344",
+          vehicle: result.vehicle,
+        },
+        assignedAt: new Date().toISOString(),
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -946,6 +998,12 @@ export class DispatchService {
       }
     } catch {
       // Offline fallback
+    }
+
+    // Notify admin operations via Socket.IO
+    const socketService = getSocketService();
+    if (socketService) {
+      socketService.notifyRideRejected(rideId, driverId, reason);
     }
 
     // Cascade to next candidate

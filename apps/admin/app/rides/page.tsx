@@ -6,12 +6,15 @@ import { Header } from "../../src/components/Header";
 import { StatusChip } from "../../src/components/StatusChip";
 import { EmptyState } from "../../src/components/EmptyState";
 import { apiRequest } from "../../src/lib/api";
+import { getAdminSocket } from "../../src/lib/socket";
+import { SocketServerEvent } from "@kekego/validation";
 import {
   RefreshCw,
   Navigation,
   Radio,
   Clock,
   History,
+  Wifi,
 } from "lucide-react";
 
 interface RideRecord {
@@ -79,6 +82,7 @@ export default function RidesPage() {
   const [selectedHistoryRideId, setSelectedHistoryRideId] = useState<string | null>(null);
   const [dispatchHistory, setDispatchHistory] = useState<DispatchHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
 
   const fetchRidesAndDispatches = useCallback(async () => {
     setLoading(true);
@@ -108,6 +112,35 @@ export default function RidesPage() {
     void fetchRidesAndDispatches();
   }, [fetchRidesAndDispatches]);
 
+  // Connect real-time admin telemetry socket
+  useEffect(() => {
+    const socket = getAdminSocket();
+    if (!socket) return;
+
+    const handleConnect = () => setIsSocketConnected(true);
+    const handleDisconnect = () => setIsSocketConnected(false);
+
+    if (socket.connected) {
+      setIsSocketConnected(true);
+    }
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+
+    const handleTelemetry = () => {
+      // Real-time automatic refresh on ride dispatch/state updates
+      void fetchRidesAndDispatches();
+    };
+
+    socket.on(SocketServerEvent.ADMIN_TELEMETRY_UPDATE, handleTelemetry);
+
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off(SocketServerEvent.ADMIN_TELEMETRY_UPDATE, handleTelemetry);
+    };
+  }, [fetchRidesAndDispatches]);
+
   const viewDispatchHistory = async (rideId: string) => {
     setSelectedHistoryRideId(rideId);
     setLoadingHistory(true);
@@ -132,13 +165,38 @@ export default function RidesPage() {
           title="Trip Dispatch & Operations"
           subtitle="Real-time ride matching, dispatch queues, and route telemetry across Nasarawa State"
           actions={
-            <button
-              onClick={() => void fetchRidesAndDispatches()}
-              className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-semibold flex items-center space-x-1.5 transition"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-              <span>Refresh</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <div
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
+                  isSocketConnected
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                    : "bg-slate-900 border-slate-800 text-slate-400"
+                }`}
+              >
+                <span className="relative flex h-2 w-2">
+                  {isSocketConnected && (
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  )}
+                  <span
+                    className={`relative inline-flex rounded-full h-2 w-2 ${
+                      isSocketConnected ? "bg-emerald-500" : "bg-slate-500"
+                    }`}
+                  ></span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <Wifi className="w-3 h-3" />
+                  <span>{isSocketConnected ? "Live Telemetry" : "Connecting"}</span>
+                </span>
+              </div>
+
+              <button
+                onClick={() => void fetchRidesAndDispatches()}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-semibold flex items-center space-x-1.5 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
           }
         />
 
