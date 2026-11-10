@@ -1,8 +1,14 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import { env } from "./config/env.js";
+import { authPlugin } from "./plugins/auth.plugin.js";
 import { healthRoutes } from "./routes/health.js";
+import { authRoutes } from "./routes/auth.routes.js";
+import { userRoutes } from "./routes/user.routes.js";
+import { adminRoutes } from "./routes/admin.routes.js";
+import { AppError } from "./utils/errors.js";
 
 export async function createServer(): Promise<FastifyInstance> {
   const isProd = env.NODE_ENV === "production";
@@ -24,12 +30,46 @@ export async function createServer(): Promise<FastifyInstance> {
     credentials: true,
   });
 
-  // Health and readiness routes
-  await app.register(healthRoutes);
+  // Rate Limiting (Default 100 requests per minute)
+  await app.register(rateLimit, {
+    max: 100,
+    timeWindow: "1 minute",
+  });
+
+  // Global error handler (MUST be registered before routes in Fastify)
+  app.setErrorHandler((error, _request, reply) => {
+    app.log.error(error);
+
+    if (error instanceof AppError) {
+      return reply.status(error.statusCode).send({
+        success: false,
+        error: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+        },
+      });
+    }
+
+    const statusCode = (error as { statusCode?: number }).statusCode ?? 500;
+    const code = (error as { code?: string }).code ?? "INTERNAL_SERVER_ERROR";
+    const message =
+      statusCode === 500 && isProd
+        ? "An unexpected error occurred"
+        : error.message;
+
+    return reply.status(statusCode).send({
+      success: false,
+      error: {
+        code,
+        message,
+      },
+    });
+  });
 
   // Global not found handler
   app.setNotFoundHandler((request, reply) => {
-    reply.status(404).send({
+    return reply.status(404).send({
       success: false,
       error: {
         code: "NOT_FOUND",
@@ -38,21 +78,14 @@ export async function createServer(): Promise<FastifyInstance> {
     });
   });
 
-  // Global error handler
-  app.setErrorHandler((error, _request, reply) => {
-    app.log.error(error);
-    const statusCode = error.statusCode ?? 500;
-    reply.status(statusCode).send({
-      success: false,
-      error: {
-        code: error.code ?? "INTERNAL_SERVER_ERROR",
-        message:
-          statusCode === 500 && isProd
-            ? "An unexpected error occurred"
-            : error.message,
-      },
-    });
-  });
+  // Auth Plugin (JWT + decorators)
+  await app.register(authPlugin);
+
+  // Routes
+  await app.register(healthRoutes);
+  await app.register(authRoutes);
+  await app.register(userRoutes);
+  await app.register(adminRoutes);
 
   return app;
 }
