@@ -1,0 +1,60 @@
+/**
+ * Core Domain Enums for Kekego Platform
+ */
+
+export enum UserRole {
+  ADMIN = "ADMIN",
+  DRIVER = "DRIVER",
+  PASSENGER = "PASSENGER",
+  PARTNER = "PARTNER",
+}
+
+export enum DriverVerificationStatus {
+  UNVERIFIED = "UNVERIFIED",
+  PENDING_REVIEW = "PENDING_REVIEW",
+  VERIFIED = "VERIFIED",
+  REJECTED = "REJECTED",
+  SUSPENDED = "SUSPENDED",
+}
+
+export enum DriverAvailabilityStatus {
+  OFFLINE = "OFFLINE",
+  ONLINE = "ONLINE",
+  BUSY = "BUSY",
+}
+
+export enum RideTier {
+  STANDARD = "STANDARD", // 1-3 passengers
+  CHARTER = "CHARTER",   // exclusive direct route
+  CARGO = "CARGO",       // parcel / payload delivery
+}
+
+export enum RideStatus {
+  REQUESTED = "REQUESTED",
+  SEARCHING = "SEARCHING",
+  DRIVER_ASSIGNED = "DRIVER_ASSIGNED",
+  DRIVER_EN_ROUTE = "DRIVER_EN_ROUTE",
+  DRIVER_ARRIVED = "DRIVER_ARRIVED",
+  IN_PROGRESS = "IN_PROGRESS",
+  COMPLETED = "COMPLETED",
+  CANCELLED = "CANCELLED",
+  NO_DRIVER_FOUND = "NO_DRIVER_FOUND",
+}
+
+export enum PaymentStatus {
+  PENDING = "PENDING",
+  COMPLETED = "COMPLETED",
+  FAILED = "FAILED",
+  REFUNDED = "REFUNDED",
+}
+
+export enum PaymentMethod {
+  CASH = "CASH",
+  WALLET = "WALLET",
+  CARD = "CARD",
+  BANK_TRANSFER = "BANK_TRANSFER",
+}
+
+export enum VehicleType {
+  KEKE_NAPEP = "KEKE_NAPEP",
+}
