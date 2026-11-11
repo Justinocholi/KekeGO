@@ -11,6 +11,7 @@ import { adminRoutes } from "./routes/admin.routes.js";
 import { rideRoutes } from "./routes/ride.routes.js";
 import { geofenceRoutes } from "./routes/geofence.routes.js";
 import { fareRoutes } from "./routes/fare.routes.js";
+import { paymentRoutes } from "./routes/payment.routes.js";
 import { AppError } from "./utils/errors.js";
 import { SocketService } from "./services/socket.service.js";
 
@@ -46,6 +47,22 @@ export async function createServer(): Promise<FastifyInstance> {
     timeWindow: "1 minute",
   });
 
+  // Preserve raw buffer for payment webhook signature validation
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (req, body, done) => {
+      try {
+        (req as any).rawBody = body;
+        const json = JSON.parse(body.toString("utf8"));
+        done(null, json);
+      } catch (err: any) {
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    }
+  );
+
   // Global error handler (MUST be registered before routes in Fastify)
   app.setErrorHandler((error, _request, reply) => {
     app.log.error(error);
@@ -57,6 +74,17 @@ export async function createServer(): Promise<FastifyInstance> {
           code: error.code,
           message: error.message,
           details: error.details,
+        },
+      });
+    }
+
+    if ((error as any).name === "ZodError" || (error as any).issues) {
+      return reply.status(400).send({
+        success: false,
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Request validation failed",
+          details: (error as any).issues || (error as any).errors,
         },
       });
     }
@@ -108,6 +136,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(rideRoutes);
   await app.register(geofenceRoutes);
   await app.register(fareRoutes);
+  await app.register(paymentRoutes);
 
   return app;
 }

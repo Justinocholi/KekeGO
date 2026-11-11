@@ -58,3 +58,18 @@ export enum PaymentMethod {
 export enum VehicleType {
   KEKE_NAPEP = "KEKE_NAPEP",
 }
+
+export enum LedgerEntryType {
+  CREDIT = "CREDIT",
+  DEBIT = "DEBIT",
+}
+
+export enum LedgerCategory {
+  TRIP_FARE = "TRIP_FARE",
+  PLATFORM_COMMISSION = "PLATFORM_COMMISSION",
+  PARTNER_COMMISSION = "PARTNER_COMMISSION",
+  CANCELLATION_FEE = "CANCELLATION_FEE",
+  PAYOUT = "PAYOUT",
+  REFUND = "REFUND",
+  WALLET_TOPUP = "WALLET_TOPUP",
+}
