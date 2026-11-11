@@ -7,4 +7,5 @@ export * from "./dispatch.js";
 export * from "./socket.js";
 export * from "./fare.js";
 export * from "./payment.js";
+export * from "./feedback.js";
 export { z } from "zod";

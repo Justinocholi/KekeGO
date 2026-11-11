@@ -11,9 +11,11 @@ import {
   rejectRideSchema,
 } from "@kekego/validation";
 import { RideService } from "../services/ride.service.js";
+import { RatingService } from "../services/rating.service.js";
 
 export const rideRoutes: FastifyPluginAsync = async (fastify) => {
   const rideService = new RideService();
+  const ratingService = new RatingService();
 
   // POST /rides/estimate (Fare estimation across tiers)
   fastify.post("/rides/estimate", async (request, reply) => {
@@ -193,11 +195,12 @@ export const rideRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      const rating = await rideService.submitRating(
-        params.id,
-        request.user.userId,
-        parseResult.data
-      );
+      const rating = await ratingService.submitRating({
+        rideId: params.id,
+        userId: request.user.userId,
+        userRole: UserRole.PASSENGER,
+        input: parseResult.data,
+      });
 
       return reply.status(201).send({
         success: true,

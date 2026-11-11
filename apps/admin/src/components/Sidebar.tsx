@@ -13,6 +13,7 @@ import {
   MapPin,
   Banknote,
   Wallet,
+  LifeBuoy,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { label: "Service Areas & Geo", href: "/service-areas", icon: MapPin },
   { label: "Pricing & Fares", href: "/pricing", icon: Banknote },
   { label: "Finance & Ledger", href: "/finance", icon: Wallet },
+  { label: "Support & Disputes", href: "/support", icon: LifeBuoy },
   { label: "Driver Partners", href: "/drivers", icon: Car },
   { label: "Passengers & Users", href: "/users", icon: Users },
   { label: "Tricycle Fleet", href: "/vehicles", icon: Car },
