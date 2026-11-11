@@ -1,0 +1,116 @@
+version: "3.8"
+
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL 16 with PostGIS Spatial Extensions
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: kekego-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kekego}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kekego_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-kekego}
+    ports:
+      - "5432:5432"
+    volumes:
+      - kekego_postgres_data:/var/lib/postgresql/data
+    networks:
+      - kekego-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kekego -d kekego"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # Redis 7 (In-Memory State, Rate-Limiting, Concurrency Locks)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: kekego-redis
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-kekego_redis_secret}
+    ports:
+      - "6379:6379"
+    volumes:
+      - kekego_redis_data:/data
+    networks:
+      - kekego-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-kekego_redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # Fastify Backend API
+  # ----------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: kekego-api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kekego}:${POSTGRES_PASSWORD:-kekego_secret}@postgres:5432/${POSTGRES_DB:-kekego}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:-kekego_redis_secret}@redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-generate_strong_64_byte_hex_for_access_secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-generate_strong_64_byte_hex_for_refresh_secret}
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 7d
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-sk_test_placeholder}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY:-pk_test_placeholder}
+      PAYSTACK_WEBHOOK_SECRET: ${PAYSTACK_WEBHOOK_SECRET:-wh_sec_placeholder}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-placeholder_maps_key}
+      DEFAULT_SERVICE_AREA_STATE: ${DEFAULT_SERVICE_AREA_STATE:-Nasarawa}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,https://admin.kekego.ng}
+    networks:
+      - kekego-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ----------------------------------------------------------------------------
+  # Next.js Admin & Operations Dashboard
+  # ----------------------------------------------------------------------------
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    container_name: kekego-admin
+    restart: always
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    networks:
+      - kekego-network
+
+volumes:
+  kekego_postgres_data:
+    name: kekego_postgres_data
+  kekego_redis_data:
+    name: kekego_redis_data
+
+networks:
+  kekego-network:
+    name: kekego-network
+    driver: bridge

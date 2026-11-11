@@ -365,7 +365,7 @@ export default function SupportPage() {
                 <label className="text-xs font-semibold text-slate-400">Status Transition</label>
                 <select
                   value={modalStatus}
-                  onChange={(e) => setModalStatus(e.target.value as any)}
+                  onChange={(e) => setModalStatus(e.target.value as "OPEN" | "INVESTIGATING" | "RESOLVED" | "CLOSED")}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white mt-1 focus:border-amber-500 focus:outline-none"
                 >
                   <option value="OPEN">OPEN</option>

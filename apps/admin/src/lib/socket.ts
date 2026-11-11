@@ -4,7 +4,6 @@ import { io, type Socket } from "socket.io-client";
 import { API_URL, getStoredToken } from "./api";
 import {
   SocketClientEvent,
-  SocketServerEvent,
 } from "@kekego/validation";
 
 let adminSocket: Socket | null = null;

@@ -1,0 +1,36 @@
+# Git & OS metadata
+.git
+.gitignore
+.DS_Store
+Thumbs.db
+
+# Dependencies & Build Caches
+node_modules
+.pnpm-store
+.next
+dist
+build
+coverage
+*.tsbuildinfo
+.turbo
+
+# Environment Secrets (Must be supplied via orchestrator/env_file)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Mobile Apps (Native build artifacts not needed in API/Admin containers)
+apps/passenger/.expo
+apps/passenger/android
+apps/passenger/ios
+apps/driver/.expo
+apps/driver/android
+apps/driver/ios
+
+# Documentation & Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

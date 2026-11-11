@@ -181,8 +181,15 @@ export class DispatchService {
   /**
    * Helper to seed driver state in memory for unit & concurrency testing
    */
-  seedMockDriver(driver: InMemoryDriverState) {
-    IN_MEMORY_DRIVER_STATES.set(driver.driverId, driver);
+  seedMockDriver(driver: Partial<InMemoryDriverState> & { driverId: string }) {
+    const existing = IN_MEMORY_DRIVER_STATES.get(driver.driverId);
+    IN_MEMORY_DRIVER_STATES.set(driver.driverId, {
+      driverId: driver.driverId,
+      userId: driver.userId || existing?.userId || `user-${driver.driverId}`,
+      verificationStatus: driver.verificationStatus || existing?.verificationStatus || DriverVerificationStatus.VERIFIED,
+      availabilityStatus: driver.availabilityStatus || existing?.availabilityStatus || DriverAvailabilityStatus.ONLINE,
+      activeRideId: driver.activeRideId !== undefined ? driver.activeRideId : (existing?.activeRideId ?? null),
+    });
   }
 
   /**

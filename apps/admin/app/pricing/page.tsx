@@ -3,20 +3,12 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Sidebar } from "../../src/components/Sidebar";
 import { Header } from "../../src/components/Header";
-import { StatusChip } from "../../src/components/StatusChip";
-import { EmptyState } from "../../src/components/EmptyState";
 import { apiRequest } from "../../src/lib/api";
 import {
-  Banknote,
   Plus,
   RefreshCw,
   Calculator,
-  History,
   ShieldCheck,
-  Percent,
-  Clock,
-  ArrowRight,
-  TrendingUp,
 } from "lucide-react";
 
 interface FareRuleRecord {
@@ -132,8 +124,8 @@ export default function PricingPage() {
 
       setShowModal(false);
       await fetchFareRules();
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to deploy new pricing rule");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Failed to deploy new pricing rule");
     } finally {
       setSaving(false);
     }
@@ -320,7 +312,7 @@ export default function PricingPage() {
                   </label>
                   <select
                     value={simTier}
-                    onChange={(e) => setSimTier(e.target.value as any)}
+                    onChange={(e) => setSimTier(e.target.value as "STANDARD" | "CHARTER" | "CARGO")}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
                   >
                     <option value="STANDARD">Standard Keke</option>
@@ -549,7 +541,7 @@ export default function PricingPage() {
                 </label>
                 <select
                   value={formTier}
-                  onChange={(e) => setFormTier(e.target.value as any)}
+                  onChange={(e) => setFormTier(e.target.value as "STANDARD" | "CHARTER" | "CARGO")}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium"
                 >
                   <option value="STANDARD">Standard Keke</option>

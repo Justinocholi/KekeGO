@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { UserRole } from "@kekego/database";
 import {
-  createRatingSchema,
   createSupportTicketSchema,
   updateSupportTicketStatusSchema,
   notificationQuerySchema,
