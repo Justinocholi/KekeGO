@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kekego Driver",
     "slug": "kekego-driver",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -10,15 +10,37 @@
       "backgroundColor": "#0F766E"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "ng.kekego.driver",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Kekego Driver uses your location to route you to passengers and calculate trip distances.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Continuous background location is required to receive trip dispatches and track journeys when the app is minimized."
+      }
     },
     "android": {
+      "package": "com.kekego.driver",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0F766E"
-      }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "INTERNET",
+        "VIBRATE",
+        "WAKE_LOCK"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "kekego-driver-nasarawa"
+      }
     }
   }
 }

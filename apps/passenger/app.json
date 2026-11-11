@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kekego Passenger",
     "slug": "kekego-passenger",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -10,15 +10,32 @@
       "backgroundColor": "#F59E0B"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "ng.kekego.passenger",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Kekego requires your location to display nearby Keke drivers and pick you up accurately."
+      }
     },
     "android": {
+      "package": "com.kekego.passenger",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#F59E0B"
-      }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET",
+        "VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "kekego-passenger-nasarawa"
+      }
     }
   }
 }
