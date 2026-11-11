@@ -11,12 +11,14 @@ import {
   Navigation,
   LogOut,
   MapPin,
+  Banknote,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/", icon: LayoutDashboard },
   { label: "Service Areas & Geo", href: "/service-areas", icon: MapPin },
+  { label: "Pricing & Fares", href: "/pricing", icon: Banknote },
   { label: "Driver Partners", href: "/drivers", icon: Car },
   { label: "Passengers & Users", href: "/users", icon: Users },
   { label: "Tricycle Fleet", href: "/vehicles", icon: Car },
