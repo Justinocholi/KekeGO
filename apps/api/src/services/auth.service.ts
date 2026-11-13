@@ -362,13 +362,21 @@ export class AuthService {
         );
       }
     } else {
-      // In offline / dev fallback mode, accept Kekego@2026 or Password123! or admin123
-      const acceptedPasswords = ["Kekego@2026", "Password123!", "admin123", "password"];
+      // In offline / dev fallback mode, accept common dev / test passwords
+      const acceptedPasswords = [
+        "Kekego@2026",
+        "Password123!",
+        "admin123",
+        "password",
+        "AdminPass123!",
+        "DriverPass123!",
+        "PassengerPass123!",
+      ];
       if (!acceptedPasswords.includes(input.password)) {
         throw new AppError(
           401,
           "INVALID_CREDENTIALS",
-          "Invalid password for offline mock account. Use 'Kekego@2026' or 'Password123!'"
+          "Invalid password for offline mock account. Use 'Password123!' or 'Kekego@2026'"
         );
       }
     }
