@@ -27,6 +27,31 @@ interface AuthContextType {
   switchRole: (role: UserRole) => Promise<void>;
 }
 
+const PUBLIC_ROUTES = [
+  "/",
+  "/how-it-works",
+  "/become-a-driver",
+  "/login",
+  "/register",
+  "/driver/login",
+  "/driver/register",
+  "/admin/login",
+  "/forgot-password",
+];
+
+export function getRoleDestination(user: AppUser): string {
+  if (user.role === UserRole.ADMIN) return "/admin";
+  if (user.role === UserRole.DRIVER) {
+    const isPending =
+      user.driverProfile &&
+      (user.driverProfile as { verificationStatus?: string }).verificationStatus === "PENDING_REVIEW";
+    return isPending ? "/driver/onboarding" : "/driver";
+  }
+  if (user.role === UserRole.PASSENGER) return "/passenger";
+  if (user.role === UserRole.PARTNER) return "/partners";
+  return "/";
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -66,16 +91,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLoading) {
-      const isLoginPage = pathname === "/login";
-      if (!user && !isLoginPage) {
+      const isPublic = PUBLIC_ROUTES.includes(pathname);
+      const isAuthPage = [
+        "/login",
+        "/register",
+        "/driver/login",
+        "/driver/register",
+        "/admin/login",
+      ].includes(pathname);
+
+      if (!user && !isPublic) {
         router.push("/login");
-      } else if (user && isLoginPage) {
+      } else if (user && isAuthPage) {
+        router.push(getRoleDestination(user));
+      } else if (user) {
+        // Enforce role-based boundaries
         if (user.role === UserRole.PASSENGER) {
-          router.push("/passenger");
+          const forbiddenPrefixes = [
+            "/admin",
+            "/driver",
+            "/partners",
+            "/finance",
+            "/vehicles",
+            "/pricing",
+            "/service-areas",
+          ];
+          if (forbiddenPrefixes.some((p) => pathname.startsWith(p))) {
+            router.push("/passenger");
+          }
         } else if (user.role === UserRole.DRIVER) {
-          router.push("/driver");
-        } else {
-          router.push("/");
+          const forbiddenPrefixes = [
+            "/admin",
+            "/users",
+            "/finance",
+            "/partners",
+            "/pricing",
+            "/service-areas",
+          ];
+          if (forbiddenPrefixes.some((p) => pathname.startsWith(p))) {
+            router.push("/driver");
+          }
         }
       }
     }
@@ -84,13 +139,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = (token: string, loggedInUser: AppUser) => {
     setStoredToken(token);
     setUser(loggedInUser);
-    if (loggedInUser.role === UserRole.PASSENGER) {
-      router.push("/passenger");
-    } else if (loggedInUser.role === UserRole.DRIVER) {
-      router.push("/driver");
-    } else {
-      router.push("/");
-    }
+    const dest = getRoleDestination(loggedInUser);
+    router.push(dest);
   };
 
   const switchRole = async (targetRole: UserRole) => {
@@ -111,15 +161,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       setStoredToken(data.tokens.accessToken);
       setUser(data.user);
-      if (targetRole === UserRole.PASSENGER) {
-        router.push("/passenger");
-      } else if (targetRole === UserRole.DRIVER) {
-        router.push("/driver");
-      } else {
-        router.push("/");
-      }
-    } catch (e) {
-      console.error("Role switch failed", e);
+      const dest = getRoleDestination(data.user);
+      router.push(dest);
+    } catch {
+      // Keep state
     } finally {
       setIsLoading(false);
     }

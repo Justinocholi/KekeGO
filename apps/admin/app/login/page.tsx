@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { apiRequest } from "../../src/lib/api";
 import { useAuth, type AppUser } from "../../src/context/AuthContext";
 import { UserRole } from "@kekego/shared";
@@ -193,9 +194,17 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Password
-            </label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="block text-xs font-medium text-slate-300">
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-[10px] text-amber-400 hover:text-amber-300 transition"
+              >
+                Forgot Password?
+              </Link>
+            </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               <input
@@ -225,9 +234,35 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 pt-5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-          <span>Territory: Nasarawa State (Lafia, Karu, Keffi, Akwanga, Doma)</span>
-          <span className="font-mono text-amber-400">Default: Kekego@2026</span>
+        {/* Cross-portal & Registration links */}
+        <div className="mt-6 pt-5 border-t border-slate-800/80 space-y-3 text-center text-xs text-slate-400">
+          <p>
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="text-amber-400 font-bold hover:underline">
+              Sign Up as Passenger
+            </Link>
+            {" "}or{" "}
+            <Link href="/driver/register" className="text-emerald-400 font-bold hover:underline">
+              Drive with KekeGO
+            </Link>
+          </p>
+          <div className="flex items-center justify-center space-x-4 text-[11px] pt-1">
+            <Link href="/driver/login" className="text-slate-400 hover:text-white transition">
+              Driver Login
+            </Link>
+            <span className="text-slate-700">•</span>
+            <Link href="/admin/login" className="text-purple-400 hover:text-purple-300 font-semibold transition">
+              Administrator Portal
+            </Link>
+            <span className="text-slate-700">•</span>
+            <Link href="/" className="text-slate-400 hover:text-white transition">
+              Home
+            </Link>
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-900">
+            <span>Territory: Nasarawa State (Lafia, Karu, Keffi, Akwanga, Doma)</span>
+            <span className="font-mono text-amber-400">Default: Kekego@2026</span>
+          </div>
         </div>
       </div>
     </div>

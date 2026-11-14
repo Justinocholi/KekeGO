@@ -23,7 +23,7 @@ import { UserRole } from "@kekego/shared";
 const MVP_PORTALS = [
   { label: "Passenger Portal", href: "/passenger", icon: UserCheck, role: "User / Rider", badge: "BOOKING" },
   { label: "Driver Cockpit", href: "/driver", icon: Car, role: "Driver", badge: "DISPATCH" },
-  { label: "Admin Console", href: "/", icon: LayoutDashboard, role: "Super Admin", badge: "OPS" },
+  { label: "Admin Console", href: "/admin", icon: LayoutDashboard, role: "Super Admin", badge: "OPS" },
 ];
 
 const MANAGEMENT_ITEMS = [
