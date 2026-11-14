@@ -7,21 +7,22 @@ import { useAuth } from "../../src/context/AuthContext";
 import {
   Car,
   Power,
-  MapPin,
-  Banknote,
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
   Sparkles,
   Phone,
   Navigation,
+  Clock,
+  ArrowRight,
+  TrendingUp,
 } from "lucide-react";
 
 export default function DriverCockpitPage() {
   const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(true);
 
-  // Dispatch offer state
+  // Dispatch offer lifecycle states
   const [dispatchState, setDispatchState] = useState<
     "WAITING" | "OFFER_RECEIVED" | "ACCEPTED" | "ARRIVED" | "IN_TRIP" | "COMPLETED"
   >("WAITING");
@@ -30,7 +31,7 @@ export default function DriverCockpitPage() {
   const [otpError, setOtpError] = useState(false);
   const [cashConfirmed, setCashConfirmed] = useState(false);
 
-  // Daily earnings state
+  // Shift financial ledger tracking
   const [todayEarnings, setTodayEarnings] = useState({
     tripsCount: 14,
     grossFareKobo: 1850000, // ₦18,500
@@ -40,7 +41,7 @@ export default function DriverCockpitPage() {
     walletBalanceKobo: 2500000, // ₦25,000
   });
 
-  // Countdown timer for incoming offer
+  // Countdown timer for incoming offer (15s)
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (dispatchState === "OFFER_RECEIVED" && countdown > 0) {
@@ -82,14 +83,13 @@ export default function DriverCockpitPage() {
 
   const handleConfirmCashPayment = () => {
     setCashConfirmed(true);
-    // Update local driver earnings metrics
     setTodayEarnings((prev) => ({
       tripsCount: prev.tripsCount + 1,
       grossFareKobo: prev.grossFareKobo + 55000,
       platformFeeKobo: prev.platformFeeKobo + 8250,
       partnerFeeKobo: prev.partnerFeeKobo + 2750,
       netEarningsKobo: prev.netEarningsKobo + 44000,
-      walletBalanceKobo: prev.walletBalanceKobo - 11000, // Debited 20% platform+partner share
+      walletBalanceKobo: prev.walletBalanceKobo - 11000,
     }));
   };
 
@@ -104,359 +104,425 @@ export default function DriverCockpitPage() {
       <Sidebar />
       <div className="flex-1 ml-64 flex flex-col">
         <Header
-          title="Driver Ride Cockpit (Driver / Rider Portal)"
-          subtitle="Manage active shifts, accept dispatch calls, verify start OTPs, and track daily cash earnings"
+          title="Keke Driver Cockpit (Rider / Tricycle Operator)"
+          subtitle="Manage active shift availability, respond to dispatches, verify passenger OTPs, and track shift revenue"
         />
 
         <main className="p-8 max-w-7xl w-full mx-auto space-y-8">
-          {/* Driver Status Banner */}
-          <div className="bg-gradient-to-r from-emerald-500/20 via-slate-900 to-slate-900 border border-emerald-500/30 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          {/* Driver Shift Header with Online Toggle */}
+          <div className="bg-gradient-to-r from-emerald-500/20 via-slate-900 to-slate-900 border border-emerald-500/30 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-slate-950 font-bold flex items-center justify-center text-xl shadow-lg shadow-emerald-500/20">
-                {user ? user.firstName[0] : "M"}
+              <div className="w-14 h-14 rounded-2xl bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-2xl shadow-lg shadow-amber-500/20">
+                🛺
               </div>
               <div>
                 <div className="flex items-center space-x-2">
                   <h2 className="text-base font-bold text-white">
                     {user ? `${user.firstName} ${user.lastName}` : "Musa Ibrahim"}
                   </h2>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    Verified Driver
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1">
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Verified Commercial Operator</span>
                   </span>
-                  <span className="text-xs text-amber-400 font-bold">4.95 ★</span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Vehicle: <strong className="text-slate-200">Bajaj RE 4S (Yellow)</strong> • Plate:{" "}
-                  <span className="font-mono text-emerald-400 font-bold">LAF-882-XA</span> • Fleet:{" "}
-                  <span className="text-slate-300">Karu Transit Ltd</span>
+                <p className="text-xs text-slate-400 mt-1 flex items-center space-x-2">
+                  <span className="font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-amber-400 font-bold">
+                    Plate: LAF-882-XA
+                  </span>
+                  <span>•</span>
+                  <span>Bajaj RE 4S (Yellow)</span>
+                  <span>•</span>
+                  <span className="text-amber-400">4.9 ★ (185 trips)</span>
                 </p>
               </div>
             </div>
 
             {/* Shift Online/Offline Toggle */}
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-[10px] text-slate-400 uppercase font-semibold">Shift Status</p>
-                <p className={`text-xs font-bold ${isOnline ? "text-emerald-400" : "text-rose-400"}`}>
-                  {isOnline ? "ONLINE — Accepting Dispatches" : "OFFLINE — Shift Paused"}
-                </p>
-              </div>
+            <div className="flex items-center space-x-3 bg-slate-950/80 p-2 rounded-2xl border border-slate-800">
               <button
                 type="button"
-                onClick={() => setIsOnline(!isOnline)}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-all shadow-lg ${
+                onClick={() => {
+                  setIsOnline(!isOnline);
+                  if (isOnline) setDispatchState("WAITING");
+                }}
+                className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition ${
                   isOnline
-                    ? "bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/20"
-                    : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                    ? "bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/25"
+                    : "bg-slate-800 text-slate-400"
                 }`}
               >
-                <Power className="w-5 h-5" />
+                <Power className="w-4 h-4" />
+                <span>{isOnline ? "Online (Available)" : "Offline (Shift Ended)"}</span>
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left Column: Live Dispatch Offer & Active Trip Execution */}
+            {/* Left Column: Active Cockpit Dispatch Actions */}
             <div className="lg:col-span-7 space-y-6">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                    <Navigation className="w-4 h-4 text-emerald-400" />
-                    <span>Real-Time Dispatch Console</span>
-                  </h3>
-                  <span className="text-[10px] font-mono text-slate-400">Socket.io Telemetry Active</span>
-                </div>
+              {/* State 1: Waiting for Dispatches */}
+              {dispatchState === "WAITING" && (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-6 shadow-xl">
+                  <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+                    {isOnline ? (
+                      <>
+                        <div className="absolute inset-0 rounded-full bg-emerald-500/15 animate-ping" />
+                        <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400">
+                          <Navigation className="w-8 h-8 animate-pulse" />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-500">
+                        <Power className="w-8 h-8" />
+                      </div>
+                    )}
+                  </div>
 
-                {/* State: WAITING */}
-                {dispatchState === "WAITING" && (
-                  <div className="text-center py-10 space-y-4">
-                    <div className="w-14 h-14 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center mx-auto text-emerald-400 animate-pulse">
-                      <Car className="w-7 h-7" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">
-                        {isOnline ? "Waiting for Nearby Trip Dispatches..." : "Shift is Currently Offline"}
-                      </h4>
-                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                        {isOnline
-                          ? "Your tricycle is broadcasting GPS coordinates along Lafia Central Market & NSUK Corridor."
-                          : "Toggle your shift online to start receiving ride dispatch notifications."}
-                      </p>
-                    </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      {isOnline ? "Listening for Passenger Requests..." : "You are currently Offline"}
+                    </h3>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+                      {isOnline
+                        ? "Positioned at Lafia Central Market. Fastify dispatch engine will assign trips within 3.5km."
+                        : "Turn on your shift availability switch to start receiving ride offers."}
+                    </p>
+                  </div>
 
-                    {isOnline && (
+                  {isOnline && (
+                    <div className="pt-2">
                       <button
                         type="button"
                         onClick={handleSimulateIncomingOffer}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs flex items-center space-x-2 mx-auto shadow-lg shadow-emerald-500/20 transition"
+                        className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-6 py-3 rounded-2xl text-xs shadow-lg shadow-amber-500/20 transition transform active:scale-95 flex items-center justify-center space-x-2 mx-auto"
                       >
                         <Sparkles className="w-4 h-4" />
                         <span>Simulate Incoming Passenger Request</span>
                       </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* State 2: Incoming Dispatch Offer Card (Inspired by UberClone RidePopup) */}
+              {dispatchState === "OFFER_RECEIVED" && (
+                <div className="bg-slate-900 border-2 border-amber-500 rounded-3xl p-6 space-y-5 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+                  {/* Countdown Progress Bar */}
+                  <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 h-full transition-all duration-1000 ease-linear"
+                      style={{ width: `${(countdown / 15) * 100}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2 text-amber-400 font-bold text-xs">
+                      <Clock className="w-4 h-4 animate-spin" />
+                      <span>Dispatch Offer Expires in {countdown}s</span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                      Standard Keke • ₦550.00
+                    </span>
+                  </div>
+
+                  {/* Passenger Card */}
+                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-base">
+                        AY
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">Amina Yusuf</h4>
+                        <p className="text-[10px] text-slate-400">Rating: 5.0 ★ • Cash Trip</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400">Pickup Distance</p>
+                      <p className="text-xs font-bold text-white font-mono">550m (2 mins away)</p>
+                    </div>
+                  </div>
+
+                  {/* Two-Line Location Preview with Visual Timeline */}
+                  <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 relative pl-8 space-y-3">
+                    <div className="absolute left-4 top-5 bottom-5 w-0.5 bg-gradient-to-b from-emerald-500 to-amber-500" />
+                    <div>
+                      <p className="text-[10px] text-emerald-400 font-bold uppercase">Pickup</p>
+                      <p className="text-xs font-bold text-white">Lafia Central Market</p>
+                      <p className="text-[10px] text-slate-400">Makurdi-Jos Road Central Gate</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-amber-400 font-bold uppercase">Destination</p>
+                      <p className="text-xs font-bold text-white">Federal University of Lafia</p>
+                      <p className="text-[10px] text-slate-400">Doma Road Permanent Site Gate</p>
+                    </div>
+                  </div>
+
+                  {/* Financial Breakdown for Trip */}
+                  <div className="flex items-center justify-between text-xs px-2 text-slate-300">
+                    <span>Est. Gross Fare: <strong className="text-white">₦550</strong></span>
+                    <span>15% Commission: <strong className="text-rose-400">-₦82.50</strong></span>
+                    <span>Net Operator Payout: <strong className="text-emerald-400">₦440.00</strong></span>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleDeclineOffer}
+                      className="w-full bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold py-3.5 rounded-2xl text-xs transition border border-rose-500/20"
+                    >
+                      Decline Offer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAcceptOffer}
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3.5 rounded-2xl text-xs shadow-xl shadow-emerald-500/25 transition transform active:scale-95 flex items-center justify-center space-x-2"
+                    >
+                      <span>Accept Trip (₦550)</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* State 3: Heading to Pickup */}
+              {dispatchState === "ACCEPTED" && (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-amber-400 tracking-wider">Step 1 of 3</span>
+                      <h3 className="text-sm font-bold text-white mt-0.5">Heading to Pickup Location</h3>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                      ETA: 2 Mins
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-white">Passenger: Amina Yusuf</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Meet at: Lafia Central Market Gate 1</p>
+                    </div>
+                    <a
+                      href="tel:+2348033333333"
+                      className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition border border-amber-500/30"
+                    >
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setDispatchState("ARRIVED")}
+                    className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3.5 rounded-2xl text-xs shadow-lg shadow-amber-500/20 transition"
+                  >
+                    I Have Arrived at Pickup Point
+                  </button>
+                </div>
+              )}
+
+              {/* State 4: Passenger OTP Verification (Inspired by UberClone ConfirmRidePickup) */}
+              {dispatchState === "ARRIVED" && (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider">Step 2 of 3</span>
+                      <h3 className="text-sm font-bold text-white mt-0.5">Verify Passenger Security OTP</h3>
+                    </div>
+                    <span className="text-xs text-slate-400">Passenger Code</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 text-center space-y-4">
+                    <p className="text-xs text-slate-300">
+                      Ask Amina for her 4-digit ride verification code to start the trip:
+                    </p>
+
+                    <div className="flex justify-center">
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={otpInput}
+                        onChange={(e) => {
+                          setOtpInput(e.target.value);
+                          setOtpError(false);
+                        }}
+                        placeholder="7 4 1 9"
+                        className="w-48 text-center bg-slate-900 border-2 border-amber-500 rounded-2xl py-3 text-2xl font-mono font-black text-amber-400 tracking-widest focus:outline-none shadow-lg shadow-amber-500/10"
+                      />
+                    </div>
+
+                    {otpError && (
+                      <p className="text-xs text-rose-400 font-semibold flex items-center justify-center space-x-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>Invalid OTP. Enter the passenger&apos;s code: 7419</span>
+                      </p>
                     )}
                   </div>
-                )}
 
-                {/* State: OFFER_RECEIVED (15s countdown) */}
-                {dispatchState === "OFFER_RECEIVED" && (
-                  <div className="p-6 rounded-2xl bg-amber-500/10 border-2 border-amber-500 space-y-5 animate-in fade-in duration-300">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5">
-                        <Sparkles className="w-4 h-4 animate-spin" />
-                        <span>New Trip Dispatch Offer!</span>
-                      </span>
-                      <div className="w-9 h-9 rounded-full bg-amber-500 text-slate-950 font-mono font-bold text-sm flex items-center justify-center shadow-lg">
-                        {countdown}s
-                      </div>
+                  <button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3.5 rounded-2xl text-xs shadow-lg shadow-emerald-500/25 transition"
+                  >
+                    Verify Code & Start Trip
+                  </button>
+                </div>
+              )}
+
+              {/* State 5: In Trip Navigation */}
+              {dispatchState === "IN_TRIP" && (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-blue-400 tracking-wider">Step 3 of 3</span>
+                      <h3 className="text-sm font-bold text-white mt-0.5">Trip in Progress to UniLafia</h3>
                     </div>
+                    <span className="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-lg border border-blue-500/20">
+                      4.6 km • ~11 mins
+                    </span>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                      <div>
-                        <p className="text-[10px] text-slate-400">Passenger</p>
-                        <p className="text-xs font-bold text-white mt-0.5">Amina Yusuf (5.0 ★)</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400">Total Fare (Cash)</p>
-                        <p className="text-xs font-bold text-emerald-400 mt-0.5">₦550.00 NGN</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400">Pickup</p>
-                        <p className="text-xs font-medium text-slate-300 mt-0.5 truncate">Lafia Central Market</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400">Destination</p>
-                        <p className="text-xs font-medium text-slate-300 mt-0.5 truncate">Federal University Lafia</p>
-                      </div>
-                    </div>
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+                    <p className="text-[10px] text-slate-400 uppercase font-semibold">Destination</p>
+                    <p className="text-xs font-bold text-white">Federal University of Lafia (Permanent Site)</p>
+                    <p className="text-[10px] text-slate-400">Doma Road, Lafia, Nasarawa</p>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCompleteTrip}
+                    className="w-full bg-blue-500 hover:bg-blue-400 text-slate-950 font-bold py-3.5 rounded-2xl text-xs shadow-lg shadow-blue-500/20 transition"
+                  >
+                    Arrived at Destination • Complete Trip
+                  </button>
+                </div>
+              )}
+
+              {/* State 6: Completed & Cash Collection */}
+              {dispatchState === "COMPLETED" && (
+                <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 space-y-5 shadow-2xl text-center">
+                  <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-white">Trip Finished!</h3>
+                    <p className="text-xs text-slate-400 mt-1">Collect Cash Payment from Passenger</p>
+                  </div>
+
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+                    <p className="text-2xl font-bold font-mono text-emerald-400">₦550.00 NGN</p>
+                    <p className="text-[10px] text-slate-400">Standard Keke Fare (Exact Cash or Transfer)</p>
+                  </div>
+
+                  {!cashConfirmed ? (
+                    <button
+                      type="button"
+                      onClick={handleConfirmCashPayment}
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3.5 rounded-2xl text-xs shadow-xl shadow-emerald-500/25 transition"
+                    >
+                      Confirm ₦550.00 Cash Collected
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-300">
+                        ✓ Payment confirmed and logged into driver financial ledger!
+                      </div>
                       <button
                         type="button"
-                        onClick={handleDeclineOffer}
-                        className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs transition"
+                        onClick={handleResetShift}
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-2xl text-xs transition"
                       >
-                        Decline
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAcceptOffer}
-                        className="py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-lg shadow-emerald-500/20 transition"
-                      >
-                        <span>Accept Dispatch ({countdown}s)</span>
+                        Return to Available Status
                       </button>
                     </div>
-                  </div>
-                )}
-
-                {/* State: ACCEPTED / ARRIVED / IN_TRIP */}
-                {(dispatchState === "ACCEPTED" || dispatchState === "ARRIVED" || dispatchState === "IN_TRIP") && (
-                  <div className="space-y-5">
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] text-slate-400">Current Trip Passenger</p>
-                        <h4 className="text-xs font-bold text-white mt-0.5">Amina Yusuf • ₦550 Cash</h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Lafia Central Market ➔ Federal Univ. Lafia
-                        </p>
-                      </div>
-                      <a
-                        href="tel:+2348033333333"
-                        className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-emerald-400 hover:bg-slate-800 transition"
-                      >
-                        <Phone className="w-4 h-4" />
-                      </a>
-                    </div>
-
-                    {/* Step 1: En Route to Pickup */}
-                    {dispatchState === "ACCEPTED" && (
-                      <div className="space-y-3">
-                        <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/30 text-xs text-sky-300 flex items-center space-x-2">
-                          <MapPin className="w-4 h-4 shrink-0 text-sky-400" />
-                          <span>Head to passenger pickup: Lafia Central Market (Est: 4 mins).</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setDispatchState("ARRIVED")}
-                          className="w-full py-3 bg-sky-500 hover:bg-sky-600 font-bold text-slate-950 rounded-xl text-xs shadow-lg transition"
-                        >
-                          I Have Arrived at Pickup Point
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Step 2: Arrived, Verify Start OTP */}
-                    {dispatchState === "ARRIVED" && (
-                      <div className="space-y-3 bg-slate-950 p-5 rounded-2xl border border-slate-800">
-                        <div className="flex items-center space-x-2">
-                          <ShieldCheck className="w-5 h-5 text-amber-400" />
-                          <div>
-                            <h5 className="text-xs font-bold text-white">Boarding Security Verification</h5>
-                            <p className="text-[11px] text-slate-400">Ask the passenger for their 4-digit start code</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center space-x-3 pt-2">
-                          <input
-                            type="text"
-                            maxLength={4}
-                            value={otpInput}
-                            onChange={(e) => {
-                              setOtpInput(e.target.value);
-                              setOtpError(false);
-                            }}
-                            placeholder="Enter 4-digit OTP (e.g. 7419)"
-                            className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white font-mono tracking-widest focus:outline-none focus:border-amber-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleVerifyOtp}
-                            className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 font-bold text-slate-950 rounded-xl text-xs shadow-md transition"
-                          >
-                            Verify & Start Trip
-                          </button>
-                        </div>
-
-                        {otpError && (
-                          <p className="text-[11px] text-rose-400 flex items-center space-x-1">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            <span>Invalid code. For demo, enter 7419 or 1234.</span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Step 3: Trip In Progress */}
-                    {dispatchState === "IN_TRIP" && (
-                      <div className="space-y-3">
-                        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center space-x-2">
-                          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                          <span>Trip In Progress ➔ Heading to Federal University Lafia (Main Gate).</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleCompleteTrip}
-                          className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 font-bold text-slate-950 rounded-xl text-xs shadow-lg transition"
-                        >
-                          Complete Trip & Arrive at Destination
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* State: COMPLETED (Cash Collection) */}
-                {dispatchState === "COMPLETED" && (
-                  <div className="p-6 rounded-2xl bg-purple-500/10 border border-purple-500/30 space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle2 className="w-5 h-5 text-purple-400" />
-                      <h4 className="text-xs font-bold text-white">Trip Reached Destination!</h4>
-                    </div>
-
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Total Fare to Collect:</span>
-                        <span className="font-bold text-white text-sm">₦550.00 NGN</span>
-                      </div>
-                      <div className="flex justify-between text-slate-400 text-[11px]">
-                        <span>Platform Commission (15%):</span>
-                        <span className="text-rose-400">-₦82.50</span>
-                      </div>
-                      <div className="flex justify-between text-slate-400 text-[11px]">
-                        <span>Fleet Partner Share (5%):</span>
-                        <span className="text-rose-400">-₦27.50</span>
-                      </div>
-                      <div className="flex justify-between font-bold text-emerald-400 pt-1 border-t border-slate-800">
-                        <span>Driver Net Take-Home (80%):</span>
-                        <span>+₦440.00 NGN</span>
-                      </div>
-                    </div>
-
-                    {!cashConfirmed ? (
-                      <button
-                        type="button"
-                        onClick={handleConfirmCashPayment}
-                        className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 font-bold text-slate-950 rounded-xl text-xs flex items-center justify-center space-x-2 shadow-lg transition"
-                      >
-                        <Banknote className="w-4 h-4" />
-                        <span>Confirm ₦550 Cash Received in Hand</span>
-                      </button>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="p-3 bg-emerald-500/20 text-emerald-300 rounded-xl text-xs font-medium text-center">
-                          ✓ Cash Confirmed! ₦110 platform receivables debited from digital wallet.
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleResetShift}
-                          className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs transition"
-                        >
-                          Return to Online Standby
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Right Column: Driver Wallet & Earnings Summary */}
+            {/* Right Column: Shift Financials & Vehicle Details */}
             <div className="lg:col-span-5 space-y-6">
-              {/* Daily Shift Earnings Card */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
+              {/* Daily Shift Financial Ledger */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
-                    <Banknote className="w-4 h-4 text-emerald-400" />
+                  <h3 className="text-xs font-bold text-white flex items-center space-x-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
                     <span>Today&apos;s Shift Financials</span>
-                  </h4>
-                  <span className="text-[10px] text-slate-400">Nasarawa Corridor</span>
+                  </h3>
+                  <span className="text-[10px] text-slate-400">{todayEarnings.tripsCount} Completed Trips</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-                    <p className="text-[10px] text-slate-400 uppercase font-semibold">Total Trips</p>
-                    <p className="text-lg font-bold text-white mt-0.5">{todayEarnings.tripsCount}</p>
-                  </div>
-                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-                    <p className="text-[10px] text-slate-400 uppercase font-semibold">Net Take-Home</p>
-                    <p className="text-lg font-bold text-emerald-400 mt-0.5">
-                      ₦{(todayEarnings.netEarningsKobo / 100).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-xs bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Gross Cash Collected:</span>
-                    <span className="text-white font-semibold">
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span>Gross Fares Collected:</span>
+                    <strong className="text-white font-mono">
                       ₦{(todayEarnings.grossFareKobo / 100).toLocaleString()}
-                    </span>
+                    </strong>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between items-center text-rose-400">
                     <span>Platform Commission (15%):</span>
-                    <span className="text-rose-400">
+                    <strong className="font-mono">
                       -₦{(todayEarnings.platformFeeKobo / 100).toLocaleString()}
-                    </span>
+                    </strong>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between items-center text-amber-400">
                     <span>Fleet Partner Share (5%):</span>
-                    <span className="text-rose-400">
+                    <strong className="font-mono">
                       -₦{(todayEarnings.partnerFeeKobo / 100).toLocaleString()}
-                    </span>
+                    </strong>
                   </div>
-                  <div className="flex justify-between text-slate-400 pt-2 border-t border-slate-800">
-                    <span>Driver Digital Wallet:</span>
-                    <span className="text-emerald-400 font-bold">
-                      ₦{(todayEarnings.walletBalanceKobo / 100).toLocaleString()} NGN
-                    </span>
+                  <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-sm">
+                    <span className="font-bold text-white">Net Driver Earnings (80%):</span>
+                    <strong className="text-emerald-400 font-mono font-bold text-base">
+                      ₦{(todayEarnings.netEarningsKobo / 100).toLocaleString()}
+                    </strong>
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-2 text-slate-400">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Driver Credit Limit:</span>
+                <div className="pt-3 border-t border-slate-800 flex items-center justify-between bg-slate-950 p-3 rounded-xl">
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase font-semibold">Available Payout Balance</p>
+                    <p className="text-xs font-bold text-emerald-400">₦25,000.00 NGN</p>
                   </div>
-                  <span className="font-mono text-slate-300">₦5,000.00</span>
+                  <button
+                    type="button"
+                    onClick={() => alert("Payout request of ₦25,000 initiated via Paystack Transfer API to Musa Ibrahim (First Bank).")}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition"
+                  >
+                    Withdraw
+                  </button>
+                </div>
+              </div>
+
+              {/* Assigned Tricycle Details */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+                <h3 className="text-xs font-bold text-white flex items-center space-x-2">
+                  <Car className="w-4 h-4 text-amber-500" />
+                  <span>Assigned Fleet Vehicle</span>
+                </h3>
+
+                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Vehicle Type:</span>
+                    <span className="font-bold text-white">Commercial Tricycle (Keke)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Make & Model:</span>
+                    <span className="font-bold text-white">Bajaj RE 4S (2023)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Plate Number:</span>
+                    <span className="font-bold font-mono text-amber-400">LAF-882-XA</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Fleet Partner:</span>
+                    <span className="font-bold text-white">Karu Transit Cooperative</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Inspection Status:</span>
+                    <span className="text-emerald-400 font-bold">Active & Inspected</span>
+                  </div>
                 </div>
               </div>
             </div>

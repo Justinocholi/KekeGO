@@ -13,6 +13,7 @@ import { geofenceRoutes } from "./routes/geofence.routes.js";
 import { fareRoutes } from "./routes/fare.routes.js";
 import { paymentRoutes } from "./routes/payment.routes.js";
 import { feedbackRoutes } from "./routes/feedback.routes.js";
+import { mapsRoutes } from "./routes/maps.routes.js";
 import { AppError } from "./utils/errors.js";
 import { SocketService } from "./services/socket.service.js";
 
@@ -139,6 +140,7 @@ export async function createServer(): Promise<FastifyInstance> {
   await app.register(fareRoutes);
   await app.register(paymentRoutes);
   await app.register(feedbackRoutes);
+  await app.register(mapsRoutes);
 
   return app;
 }

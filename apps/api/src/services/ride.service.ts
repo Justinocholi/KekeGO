@@ -22,6 +22,7 @@ import {
 } from "./dispatch.service.js";
 import { getSocketService } from "./socket.service.js";
 import { FareService, DEFAULT_FARE_RULES } from "./fare.service.js";
+import { googleMapsService } from "./maps.service.js";
 
 /**
  * Calculates great-circle distance between two coordinates in meters (Haversine formula)
@@ -62,17 +63,31 @@ export class RideService {
       input.tier
     );
 
-    const distanceMeters = calculateDistanceMeters(
+    let distanceMeters = calculateDistanceMeters(
       input.pickup.latitude,
       input.pickup.longitude,
       input.destination.latitude,
       input.destination.longitude
     );
+    let durationSeconds = Math.max(120, Math.round((distanceMeters / 1000 / 25) * 3600));
+
+    try {
+      const routeResult = await googleMapsService.computeRoute({
+        origin: input.pickup,
+        destination: input.destination,
+        travelMode: "DRIVE",
+        avoidTolls: false,
+      });
+      if (routeResult && routeResult.distanceMeters > 0) {
+        distanceMeters = routeResult.distanceMeters;
+        durationSeconds = routeResult.durationSeconds;
+      }
+    } catch {
+      // Graceful fallback to Haversine calculation
+    }
 
     const distanceKm = distanceMeters / 1000;
-    // Commercial tricycle urban travel speed estimate: ~25 km/h
-    const durationMinutes = Math.max(1, Math.round((distanceKm / 25) * 60));
-    const durationSeconds = durationMinutes * 60;
+    const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
 
     // Fetch active fare rules from database or fallback to default rates
     let fareRules: Array<{
